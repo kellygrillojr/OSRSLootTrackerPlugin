@@ -1,0 +1,94 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        url = 'https://repo.runelite.net'
+    }
+    mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+
+dependencies {
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    testImplementation 'junit:junit:4.12'
+    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+    testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
+    testImplementation 'ch.qos.logback:logback-classic:1.2.9'
+}
+
+group = 'com.osrsloottracker'
+version = '1.0.0'
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+    sourceCompatibility = '11'
+    targetCompatibility = '11'
+}
+
+// Environment configuration
+ext {
+    // API Endpoints
+    devApiUrl = 'https://dev.osrsloottracker.com/api'
+    prodApiUrl = 'https://osrsloottracker.com/api'
+    
+    // Discord OAuth Client IDs
+    devDiscordClientId = '1357499239525122270'
+    prodDiscordClientId = '1339214146356383744'
+}
+
+// Task to run the plugin in RuneLite for DEVELOPMENT
+task runClientDev(type: JavaExec) {
+    group = 'run'
+    description = 'Run RuneLite with the plugin (DEVELOPMENT server)'
+    
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.osrsloottracker.OSRSLootTrackerPluginTest'
+    
+    jvmArgs = [
+        '-ea',
+        '--add-opens', 'java.desktop/sun.awt=ALL-UNNAMED',
+        "-Dosrsloottracker.api=${devApiUrl}",
+        "-Dosrsloottracker.discord.clientId=${devDiscordClientId}"
+    ]
+}
+
+// Task to run the plugin in RuneLite for PRODUCTION
+task runClientProd(type: JavaExec) {
+    group = 'run'
+    description = 'Run RuneLite with the plugin (PRODUCTION server)'
+    
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.osrsloottracker.OSRSLootTrackerPluginTest'
+    
+    jvmArgs = [
+        '-ea',
+        '--add-opens', 'java.desktop/sun.awt=ALL-UNNAMED',
+        "-Dosrsloottracker.api=${prodApiUrl}",
+        "-Dosrsloottracker.discord.clientId=${prodDiscordClientId}"
+    ]
+}
+
+// Default runClient task (runs dev by default)
+task runClient(type: JavaExec) {
+    group = 'run'
+    description = 'Run RuneLite with the plugin (defaults to DEV)'
+    
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.osrsloottracker.OSRSLootTrackerPluginTest'
+    
+    jvmArgs = [
+        '-ea',
+        '--add-opens', 'java.desktop/sun.awt=ALL-UNNAMED',
+        "-Dosrsloottracker.api=${devApiUrl}",
+        "-Dosrsloottracker.discord.clientId=${devDiscordClientId}"
+    ]
+}
+
