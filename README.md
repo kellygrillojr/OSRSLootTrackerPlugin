@@ -104,7 +104,7 @@ BSD 2-Clause License - See [LICENSE](LICENSE) for details.
 
 - Discord: [OSRS Loot Tracker Support](https://discord.gg/vXSWXRTZYB)
 - Website: [osrsloottracker.com](https://osrsloottracker.com)
-- Issues: [GitHub Issues](https://github.com/yourusername/osrs-loot-tracker-plugin/issues)
+- Issues: [GitHub Issues](https://github.com/kellygrillojr/OSRSLootTrackerPlugin/issues)
 
 ## Contributing
 
