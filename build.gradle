@@ -92,3 +92,18 @@ task runClient(type: JavaExec) {
     ]
 }
 
+// Simulate Plugin Hub build - NO system properties, uses code defaults
+task runClientPluginHub(type: JavaExec) {
+    group = 'run'
+    description = 'Run like Plugin Hub would (no env vars, tests production defaults)'
+    
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.osrsloottracker.OSRSLootTrackerPluginTest'
+    
+    jvmArgs = [
+        '-ea',
+        '--add-opens', 'java.desktop/sun.awt=ALL-UNNAMED'
+        // No osrsloottracker.* properties - forces code to use defaults
+    ]
+}
+

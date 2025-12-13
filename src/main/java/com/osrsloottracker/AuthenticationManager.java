@@ -172,28 +172,21 @@ public class AuthenticationManager
      */
     private String getCallbackUrl()
     {
-        // Always prioritize system property for API endpoint (for dev/prod switching)
-        String apiEndpoint = System.getProperty("osrsloottracker.api");
-        if (apiEndpoint == null || apiEndpoint.isEmpty())
-        {
-            // Fall back to config (which defaults to production)
-            apiEndpoint = config.apiEndpoint();
-        }
+        String apiEndpoint = getApiEndpoint();
         log.info("Using API endpoint for callback: {}", apiEndpoint);
         return apiEndpoint + "/auth/plugin-callback";
     }
     
     /**
-     * Get the current API endpoint (prioritizes system property)
+     * Get the current API endpoint (prioritizes system property, defaults to production)
      */
     public String getApiEndpoint()
     {
         String apiEndpoint = System.getProperty("osrsloottracker.api");
-        if (apiEndpoint == null || apiEndpoint.isEmpty())
-        {
-            apiEndpoint = config.apiEndpoint();
-        }
-        return apiEndpoint;
+        // Always default to production - don't use config (which might have stale persisted data)
+        return (apiEndpoint != null && !apiEndpoint.isEmpty()) 
+            ? apiEndpoint 
+            : "https://osrsloottracker.com/api";
     }
     
     /**

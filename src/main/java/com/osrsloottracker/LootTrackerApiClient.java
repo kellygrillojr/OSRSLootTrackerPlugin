@@ -475,16 +475,15 @@ public class LootTrackerApiClient
     }
     
     /**
-     * Get the current API endpoint (prioritizes system property)
+     * Get the current API endpoint (prioritizes system property, defaults to production)
      */
     private String getApiEndpoint()
     {
         String apiEndpoint = System.getProperty("osrsloottracker.api");
-        if (apiEndpoint == null || apiEndpoint.isEmpty())
-        {
-            apiEndpoint = config.apiEndpoint();
-        }
-        return apiEndpoint;
+        // Always default to production - don't use config (which might have stale persisted data)
+        return (apiEndpoint != null && !apiEndpoint.isEmpty()) 
+            ? apiEndpoint 
+            : "https://osrsloottracker.com/api";
     }
     
     private String get(String endpoint) throws IOException

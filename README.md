@@ -13,19 +13,6 @@ A RuneLite plugin that sends loot drops directly to the [OSRS Loot Tracker](http
 - ⚙️ **Server Selection** - Choose which Discord server to send drops to
 - 💰 **Value Filtering** - Set minimum GP thresholds for tracking
 
-## Installation
-
-### From RuneLite Plugin Hub (Coming Soon)
-1. Open RuneLite
-2. Click the Wrench icon to open Configuration
-3. Click the Plugin Hub icon
-4. Search for "OSRS Loot Tracker"
-5. Click Install
-
-### Manual Installation (Development)
-1. Clone this repository
-2. Run `./gradlew build` to build the plugin
-3. Copy the JAR from `build/libs/` to your RuneLite plugins folder
 
 ## Setup
 
@@ -37,8 +24,7 @@ A RuneLite plugin that sends loot drops directly to the [OSRS Loot Tracker](http
 
 ### 2. Configure Server & Events
 1. Select your Discord server from the dropdown
-2. If there's an active Bingo/S&L event, select it from the Event dropdown
-3. Configure tracking options in the plugin settings
+2. Configure tracking options in the plugin settings
 
 ### 3. Start Playing!
 Your drops will automatically be sent to the platform.
@@ -54,47 +40,16 @@ Your drops will automatically be sent to the platform.
 | Minimum Value | Minimum GP value to track | 100,000 |
 | Include Untradeable | Track untradeable items | ✓ Enabled |
 
-## Requirements
 
-- RuneLite client
-- Discord account
-- OSRS Loot Tracker bot installed in your Discord server
-- Account on [osrsloottracker.com](https://osrsloottracker.com)
+The plugin communicates with the OSRS Loot Tracker backend to:
 
-## Development
-
-### Building
-```bash
-./gradlew build
-```
-
-### Testing
-```bash
-./gradlew test
-```
-
-### Project Structure
-```
-src/main/java/com/osrsloottracker/
-├── OSRSLootTrackerPlugin.java    # Main plugin class
-├── OSRSLootTrackerConfig.java    # Configuration interface
-├── OSRSLootTrackerPanel.java     # Side panel UI
-├── AuthenticationManager.java    # Discord OAuth handling
-├── LootTrackerApiClient.java     # API communication
-└── LootDropData.java             # Drop data model
-```
-
-## API Endpoints Used
-
-The plugin communicates with the OSRS Loot Tracker backend:
-
-- `POST /api/auth/plugin-token` - Exchange Discord OAuth code for JWT
-- `GET /api/plugin/servers` - Get user's servers with bot installed
-- `GET /api/plugin/servers/:id/events` - Get active events for a server
-- `POST /api/plugin/drops` - Submit a loot drop
-- `POST /api/plugin/collection-log` - Submit collection log entry
-- `POST /api/plugin/pets` - Submit pet drop
-- `GET /api/plugin/drops/recent` - Get recent drops
+- Exchange Discord OAuth code for JWT
+- Get user's servers with bot installed
+- Get active events for a server
+- Submit a loot drop
+- Submit collection log entry
+- Submit pet drop
+- Get recent drops
 
 ## License
 
