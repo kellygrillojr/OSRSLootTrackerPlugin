@@ -41,8 +41,10 @@ public class AuthenticationManager
     private static final int POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
     private static final int POLL_TIMEOUT_MS = 120000; // Give up after 2 minutes
     
-    private final Gson gson = new Gson();
     private final ScheduledExecutorService pollExecutor = Executors.newSingleThreadScheduledExecutor();
+    
+    @Inject
+    private Gson gson;
     
     @Inject
     private OSRSLootTrackerConfig config;

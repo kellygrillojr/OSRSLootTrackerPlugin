@@ -68,7 +68,9 @@ public class OSRSLootTrackerPlugin extends Plugin
     @Inject
     private DrawManager drawManager;
 
+    @Inject
     private OSRSLootTrackerPanel panel;
+    
     private NavigationButton navButton;
 
     @Override
@@ -76,8 +78,7 @@ public class OSRSLootTrackerPlugin extends Plugin
     {
         log.info("OSRS Loot Tracker plugin started!");
 
-        // Create the side panel
-        panel = new OSRSLootTrackerPanel(authManager, apiClient, config);
+        // Initialize the injected panel
         panel.init();
         
         // Set up RSN supplier - gets the current player name on demand

@@ -38,7 +38,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
     private final AuthenticationManager authManager;
     private final LootTrackerApiClient apiClient;
     private final OSRSLootTrackerConfig config;
-    private final Gson gson = new Gson();
+    private final Gson gson;
     
     // UI Components
     private JPanel authPanel;
@@ -71,11 +71,12 @@ public class OSRSLootTrackerPanel extends PluginPanel
     private java.util.function.Supplier<String> rsnSupplier = () -> null;
     
     @Inject
-    public OSRSLootTrackerPanel(AuthenticationManager authManager, LootTrackerApiClient apiClient, OSRSLootTrackerConfig config)
+    public OSRSLootTrackerPanel(AuthenticationManager authManager, LootTrackerApiClient apiClient, OSRSLootTrackerConfig config, Gson gson)
     {
         this.authManager = authManager;
         this.apiClient = apiClient;
         this.config = config;
+        this.gson = gson;
     }
     
     public void init()

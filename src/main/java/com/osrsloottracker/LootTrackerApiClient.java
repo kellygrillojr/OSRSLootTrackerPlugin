@@ -23,7 +23,8 @@ import java.util.concurrent.CompletableFuture;
 @Singleton
 public class LootTrackerApiClient
 {
-    private final Gson gson = new Gson();
+    @Inject
+    private Gson gson;
     
     @Inject
     private OSRSLootTrackerConfig config;
