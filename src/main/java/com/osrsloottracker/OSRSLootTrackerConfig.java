@@ -9,14 +9,9 @@ import net.runelite.client.config.Range;
 @ConfigGroup("osrsloottracker")
 public interface OSRSLootTrackerConfig extends Config
 {
-    // Hidden section - these are internal settings managed by the plugin
-    @ConfigSection(
-        name = "Authentication",
-        description = "Discord authentication settings",
-        position = 99,
-        closedByDefault = true
-    )
+    // Internal section keys (no visible UI - items are hidden)
     String authSection = "authentication";
+    String eventsSection = "events";
 
     @ConfigSection(
         name = "Tracking",
@@ -31,15 +26,6 @@ public interface OSRSLootTrackerConfig extends Config
         position = 2
     )
     String filtersSection = "filters";
-
-    // Events section is hidden - selection is done through the panel UI
-    @ConfigSection(
-        name = "Events",
-        description = "Bingo and event settings",
-        position = 99,
-        closedByDefault = true
-    )
-    String eventsSection = "events";
 
     // === Authentication Section (Hidden - internal use only) ===
     
