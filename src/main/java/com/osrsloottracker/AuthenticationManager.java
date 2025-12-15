@@ -4,12 +4,16 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.awt.*;
-import java.io.*;
-import java.net.*;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -45,6 +49,9 @@ public class AuthenticationManager
     
     @Inject
     private Gson gson;
+    
+    @Inject
+    private OkHttpClient okHttpClient;
     
     @Inject
     private OSRSLootTrackerConfig config;
@@ -219,26 +226,19 @@ public class AuthenticationManager
                 // Poll the session endpoint
                 String pollUrl = getApiEndpoint() + "/auth/plugin-session/" + sessionId;
                 
-                URL url = new URL(pollUrl);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(5000);
-                conn.setReadTimeout(5000);
+                Request request = new Request.Builder()
+                    .url(pollUrl)
+                    .get()
+                    .build();
                 
-                int responseCode = conn.getResponseCode();
-                
-                if (responseCode == 200)
+                try (Response response = okHttpClient.newCall(request).execute())
                 {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream())))
+                    int responseCode = response.code();
+                    
+                    if (responseCode == 200 && response.body() != null)
                     {
-                        StringBuilder response = new StringBuilder();
-                        String line;
-                        while ((line = reader.readLine()) != null)
-                        {
-                            response.append(line);
-                        }
-                        
-                        JsonObject json = gson.fromJson(response.toString(), JsonObject.class);
+                        String responseBody = response.body().string();
+                        JsonObject json = gson.fromJson(responseBody, JsonObject.class);
                         String status = json.get("status").getAsString();
                         
                         if ("complete".equals(status))
@@ -270,10 +270,10 @@ public class AuthenticationManager
                         }
                         // If status is "pending", continue polling
                     }
-                }
-                else
-                {
-                    log.debug("Poll returned status {}, continuing...", responseCode);
+                    else
+                    {
+                        log.debug("Poll returned status {}, continuing...", responseCode);
+                    }
                 }
             }
             catch (Exception e)
@@ -291,18 +291,20 @@ public class AuthenticationManager
     {
         try
         {
-            URL url = new URL(getApiEndpoint() + "/auth/me");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bearer " + token);
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(5000);
+            Request request = new Request.Builder()
+                .url(getApiEndpoint() + "/auth/me")
+                .header("Authorization", "Bearer " + token)
+                .get()
+                .build();
             
-            int responseCode = conn.getResponseCode();
-            log.debug("Token validation response: {}", responseCode);
-            return responseCode;
+            try (Response response = okHttpClient.newCall(request).execute())
+            {
+                int responseCode = response.code();
+                log.debug("Token validation response: {}", responseCode);
+                return responseCode;
+            }
         }
-        catch (Exception e)
+        catch (IOException e)
         {
             log.error("Network error validating token: {}", e.getMessage());
             return -1; // Network error

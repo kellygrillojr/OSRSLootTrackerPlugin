@@ -6,13 +6,15 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -23,8 +25,13 @@ import java.util.concurrent.CompletableFuture;
 @Singleton
 public class LootTrackerApiClient
 {
+    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+    
     @Inject
     private Gson gson;
+    
+    @Inject
+    private OkHttpClient okHttpClient;
     
     @Inject
     private OSRSLootTrackerConfig config;
@@ -492,48 +499,29 @@ public class LootTrackerApiClient
         String fullUrl = getApiEndpoint() + endpoint;
         log.debug("GET request to: {}", fullUrl);
         
-        URL url = new URL(fullUrl);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        conn.setRequestProperty("Authorization", "Bearer " + authManager.getAuthToken());
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setConnectTimeout(10000);
-        conn.setReadTimeout(10000);
+        Request request = new Request.Builder()
+            .url(fullUrl)
+            .header("Authorization", "Bearer " + authManager.getAuthToken())
+            .header("Content-Type", "application/json")
+            .get()
+            .build();
         
-        int responseCode = conn.getResponseCode();
-        log.debug("Response code: {}", responseCode);
-        
-        if (responseCode == 200)
+        try (Response response = okHttpClient.newCall(request).execute())
         {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream())))
-            {
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
-                    response.append(line);
-                }
-                return response.toString();
-            }
-        }
-        else
-        {
-            // Try to read error body
-            String errorBody = "";
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getErrorStream())))
-            {
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
-                    response.append(line);
-                }
-                errorBody = response.toString();
-            }
-            catch (Exception ignored) {}
+            int responseCode = response.code();
+            log.debug("Response code: {}", responseCode);
             
-            log.error("GET {} failed with status {}: {}", endpoint, responseCode, errorBody);
-            throw new IOException("Request failed with status: " + responseCode + " - " + errorBody);
+            String responseBody = response.body() != null ? response.body().string() : "";
+            
+            if (response.isSuccessful())
+            {
+                return responseBody;
+            }
+            else
+            {
+                log.error("GET {} failed with status {}: {}", endpoint, responseCode, responseBody);
+                throw new IOException("Request failed with status: " + responseCode + " - " + responseBody);
+            }
         }
     }
     
@@ -542,48 +530,30 @@ public class LootTrackerApiClient
      */
     private String post(String endpoint, String body) throws IOException
     {
-        URL url = new URL(getApiEndpoint() + endpoint);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Authorization", "Bearer " + authManager.getAuthToken());
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setDoOutput(true);
+        String fullUrl = getApiEndpoint() + endpoint;
         
-        try (OutputStream os = conn.getOutputStream())
-        {
-            os.write(body.getBytes(StandardCharsets.UTF_8));
-        }
+        RequestBody requestBody = RequestBody.create(JSON, body);
         
-        int responseCode = conn.getResponseCode();
-        if (responseCode >= 200 && responseCode < 300)
+        Request request = new Request.Builder()
+            .url(fullUrl)
+            .header("Authorization", "Bearer " + authManager.getAuthToken())
+            .header("Content-Type", "application/json")
+            .post(requestBody)
+            .build();
+        
+        try (Response response = okHttpClient.newCall(request).execute())
         {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream())))
-            {
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
-                    response.append(line);
-                }
-                return response.toString();
-            }
-        }
-        else
-        {
-            String errorBody = "";
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getErrorStream())))
-            {
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
-                    response.append(line);
-                }
-                errorBody = response.toString();
-            }
-            catch (Exception ignored) {}
+            int responseCode = response.code();
+            String responseBody = response.body() != null ? response.body().string() : "";
             
-            throw new IOException("Request failed with status: " + responseCode + " - " + errorBody);
+            if (response.isSuccessful())
+            {
+                return responseBody;
+            }
+            else
+            {
+                throw new IOException("Request failed with status: " + responseCode + " - " + responseBody);
+            }
         }
     }
     
