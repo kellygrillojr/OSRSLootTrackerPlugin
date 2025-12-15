@@ -3,6 +3,7 @@ package com.osrsloottracker;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
@@ -38,6 +39,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
     private final AuthenticationManager authManager;
     private final LootTrackerApiClient apiClient;
     private final OSRSLootTrackerConfig config;
+    private final ConfigManager configManager;
     private final Gson gson;
     
     // UI Components
@@ -71,11 +73,12 @@ public class OSRSLootTrackerPanel extends PluginPanel
     private java.util.function.Supplier<String> rsnSupplier = () -> null;
     
     @Inject
-    public OSRSLootTrackerPanel(AuthenticationManager authManager, LootTrackerApiClient apiClient, OSRSLootTrackerConfig config, Gson gson)
+    public OSRSLootTrackerPanel(AuthenticationManager authManager, LootTrackerApiClient apiClient, OSRSLootTrackerConfig config, ConfigManager configManager, Gson gson)
     {
         this.authManager = authManager;
         this.apiClient = apiClient;
         this.config = config;
+        this.configManager = configManager;
         this.gson = gson;
     }
     
@@ -704,7 +707,8 @@ public class OSRSLootTrackerPanel extends PluginPanel
      */
     private void saveDestinations(List<DestinationConfig> destinations)
     {
-        config.setDropDestinations(gson.toJson(destinations));
+        // Use ConfigManager for proper persistence
+        configManager.setConfiguration("osrsloottracker", "dropDestinations", gson.toJson(destinations));
         updateDestinationsDisplay();
     }
     

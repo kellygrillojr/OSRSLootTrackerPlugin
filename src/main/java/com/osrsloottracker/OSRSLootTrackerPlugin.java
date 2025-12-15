@@ -78,6 +78,10 @@ public class OSRSLootTrackerPlugin extends Plugin
     {
         log.info("OSRS Loot Tracker plugin started!");
 
+        // Check for existing authentication BEFORE initializing the panel
+        // so the panel knows whether to show login or main view
+        authManager.checkStoredAuth();
+
         // Initialize the injected panel
         panel.init();
         
@@ -116,9 +120,6 @@ public class OSRSLootTrackerPlugin extends Plugin
             .build();
 
         clientToolbar.addNavigation(navButton);
-
-        // Check for existing authentication
-        authManager.checkStoredAuth();
     }
 
     @Override

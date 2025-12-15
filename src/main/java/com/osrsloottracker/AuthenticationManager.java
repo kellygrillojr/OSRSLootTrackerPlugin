@@ -8,6 +8,8 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
+import net.runelite.client.config.ConfigManager;
+
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.awt.*;
@@ -54,6 +56,9 @@ public class AuthenticationManager
     private OkHttpClient okHttpClient;
     
     @Inject
+    private ConfigManager configManager;
+    
+    @Inject
     private OSRSLootTrackerConfig config;
     
     @Getter
@@ -73,7 +78,9 @@ public class AuthenticationManager
     private long pollStartTime;
     
     /**
-     * Check if we have stored authentication and validate it
+     * Check if we have stored authentication and restore it.
+     * We skip validation on startup - if the token is invalid/expired,
+     * API calls will fail with 401 and the user can re-login.
      */
     public void checkStoredAuth()
     {
@@ -83,44 +90,13 @@ public class AuthenticationManager
         
         if (storedToken != null && !storedToken.isEmpty())
         {
-            log.info("Found stored token, validating...");
-            
-            // Validate the token with the API
-            int validationResult = validateToken(storedToken);
-            
-            if (validationResult == 200)
-            {
-                // Token is valid
-                this.authToken = storedToken;
-                this.discordId = storedDiscordId;
-                this.discordUsername = storedUsername;
-                this.authenticated = true;
-                log.info("Restored authentication for user: {}", discordUsername);
-            }
-            else if (validationResult == 401 || validationResult == 403)
-            {
-                // Token is explicitly invalid/expired
-                log.info("Stored token is invalid ({}), clearing authentication", validationResult);
-                clearAuth();
-            }
-            else if (validationResult == -1)
-            {
-                // Network error - trust stored token temporarily
-                log.info("Network error during validation, trusting stored token for user: {}", storedUsername);
-                this.authToken = storedToken;
-                this.discordId = storedDiscordId;
-                this.discordUsername = storedUsername;
-                this.authenticated = true;
-            }
-            else
-            {
-                // Other error (500, etc) - trust stored token temporarily
-                log.warn("Unexpected validation response ({}), trusting stored token", validationResult);
-                this.authToken = storedToken;
-                this.discordId = storedDiscordId;
-                this.discordUsername = storedUsername;
-                this.authenticated = true;
-            }
+            // Trust the stored token without validation
+            // If it's invalid, API calls will fail and user can re-login
+            this.authToken = storedToken;
+            this.discordId = storedDiscordId;
+            this.discordUsername = storedUsername;
+            this.authenticated = true;
+            log.info("Restored authentication for user: {}", discordUsername);
         }
         else
         {
@@ -252,10 +228,10 @@ public class AuthenticationManager
                             this.discordUsername = user.get("discord_username").getAsString();
                             this.authenticated = true;
                             
-                            // Store in config
-                            config.setAuthToken(authToken);
-                            config.setDiscordId(discordId);
-                            config.setDiscordUsername(discordUsername);
+                            // Store in config using ConfigManager for proper persistence
+                            configManager.setConfiguration("osrsloottracker", "authToken", authToken);
+                            configManager.setConfiguration("osrsloottracker", "discordId", discordId);
+                            configManager.setConfiguration("osrsloottracker", "discordUsername", discordUsername);
                             
                             log.info("Authentication successful for user: {}", discordUsername);
                             authCallback.accept(AuthResult.success(discordUsername));
@@ -284,34 +260,6 @@ public class AuthenticationManager
     }
     
     /**
-     * Validate an existing token with the API
-     * @return HTTP status code, or -1 for network/connection errors
-     */
-    private int validateToken(String token)
-    {
-        try
-        {
-            Request request = new Request.Builder()
-                .url(getApiEndpoint() + "/auth/me")
-                .header("Authorization", "Bearer " + token)
-                .get()
-                .build();
-            
-            try (Response response = okHttpClient.newCall(request).execute())
-            {
-                int responseCode = response.code();
-                log.debug("Token validation response: {}", responseCode);
-                return responseCode;
-            }
-        }
-        catch (IOException e)
-        {
-            log.error("Network error validating token: {}", e.getMessage());
-            return -1; // Network error
-        }
-    }
-    
-    /**
      * Clear authentication and log out
      */
     public void logout()
@@ -333,9 +281,10 @@ public class AuthenticationManager
         this.discordUsername = null;
         this.authenticated = false;
         
-        config.setAuthToken("");
-        config.setDiscordId("");
-        config.setDiscordUsername("");
+        // Clear from config using ConfigManager for proper persistence
+        configManager.setConfiguration("osrsloottracker", "authToken", "");
+        configManager.setConfiguration("osrsloottracker", "discordId", "");
+        configManager.setConfiguration("osrsloottracker", "discordUsername", "");
     }
     
     /**
