@@ -113,8 +113,8 @@ public interface OSRSLootTrackerConfig extends Config
 
     @ConfigItem(
         keyName = "trackLoot",
-        name = "Track Loot Drops",
-        description = "Track valuable loot drops",
+        name = "Track Valuable Drops",
+        description = "Sends messages to Discord when valuable drops over the minimum value are received",
         section = trackingSection,
         position = 0
     )
@@ -137,7 +137,7 @@ public interface OSRSLootTrackerConfig extends Config
 
     @ConfigItem(
         keyName = "trackPets",
-        name = "Track Pet Drops",
+        name = "Track Pets",
         description = "Track pet drops",
         section = trackingSection,
         position = 2

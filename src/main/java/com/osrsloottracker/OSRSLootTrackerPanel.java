@@ -14,7 +14,6 @@ import net.runelite.client.util.QuantityFormatter;
 import javax.inject.Inject;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.border.LineBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -75,6 +74,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
     @Inject
     public OSRSLootTrackerPanel(AuthenticationManager authManager, LootTrackerApiClient apiClient, OSRSLootTrackerConfig config, ConfigManager configManager, Gson gson)
     {
+        super(false); // Don't wrap in scroll pane - we handle our own scrolling
         this.authManager = authManager;
         this.apiClient = apiClient;
         this.config = config;
@@ -88,17 +88,18 @@ public class OSRSLootTrackerPanel extends PluginPanel
         setBackground(ColorScheme.DARK_GRAY_COLOR);
         setBorder(new EmptyBorder(10, 10, 10, 10));
         
-        buildPanel();
+        buildPanel(this);
+        
         updateAuthState();
     }
     
-    private void buildPanel()
+    private void buildPanel(JPanel wrapper)
     {
-        removeAll();
+        wrapper.removeAll();
         
         // Header
         JPanel headerPanel = buildHeader();
-        add(headerPanel, BorderLayout.NORTH);
+        wrapper.add(headerPanel, BorderLayout.NORTH);
         
         // Main content
         JPanel contentPanel = new JPanel();
@@ -113,7 +114,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
         mainPanel = buildMainPanel();
         contentPanel.add(mainPanel);
         
-        add(contentPanel, BorderLayout.CENTER);
+        wrapper.add(contentPanel, BorderLayout.CENTER);
         
         revalidate();
         repaint();
@@ -263,7 +264,17 @@ public class OSRSLootTrackerPanel extends PluginPanel
         panel.add(statsPanel);
         panel.add(Box.createVerticalStrut(10));
         
-        // Destinations section header
+        // Recent drops section
+        JPanel recentSection = buildRecentDropsSection();
+        panel.add(recentSection);
+        panel.add(Box.createVerticalStrut(15));
+        
+        // Tracking status
+        JPanel trackingPanel = buildTrackingStatusPanel();
+        panel.add(trackingPanel);
+        panel.add(Box.createVerticalStrut(15));
+        
+        // Destinations section header (at bottom)
         JPanel destHeader = new JPanel(new BorderLayout());
         destHeader.setBackground(ColorScheme.DARK_GRAY_COLOR);
         
@@ -287,37 +298,6 @@ public class OSRSLootTrackerPanel extends PluginPanel
         destinationsPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
         
         panel.add(destinationsPanel);
-        panel.add(Box.createVerticalStrut(15));
-        
-        // Recent drops section (moved above tracking status)
-        JPanel recentSection = new JPanel(new BorderLayout());
-        recentSection.setBackground(ColorScheme.DARK_GRAY_COLOR);
-        
-        JLabel recentLabel = new JLabel("Recent Drops");
-        recentLabel.setForeground(BRAND_COLOR);
-        recentLabel.setFont(FontManager.getRunescapeBoldFont());
-        recentSection.add(recentLabel, BorderLayout.NORTH);
-        
-        recentDropsPanel = new JPanel();
-        recentDropsPanel.setLayout(new BoxLayout(recentDropsPanel, BoxLayout.Y_AXIS));
-        recentDropsPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        recentDropsPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
-        
-        JLabel noDropsLabel = new JLabel("No drops yet...");
-        noDropsLabel.setForeground(Color.GRAY);
-        recentDropsPanel.add(noDropsLabel);
-        
-        JScrollPane scrollPane = new JScrollPane(recentDropsPanel);
-        scrollPane.setPreferredSize(new Dimension(0, 150));
-        scrollPane.setBorder(null);
-        recentSection.add(scrollPane, BorderLayout.CENTER);
-        
-        panel.add(recentSection);
-        panel.add(Box.createVerticalStrut(15));
-        
-        // Tracking status (moved below recent drops)
-        JPanel trackingPanel = buildTrackingStatusPanel();
-        panel.add(trackingPanel);
         
         // Open dashboard button
         panel.add(Box.createVerticalStrut(10));
@@ -516,7 +496,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
         panel.setBorder(new EmptyBorder(10, 10, 10, 10));
         
         // Loot Drops row
-        JLabel lootLabel = new JLabel("Loot Drops");
+        JLabel lootLabel = new JLabel("Valuable Drops");
         lootLabel.setForeground(Color.WHITE);
         panel.add(lootLabel);
         lootDropsStatusLabel = new JLabel();
@@ -530,7 +510,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
         panel.add(collectionLogStatusLabel);
         
         // Pet Drops row
-        JLabel petLabel = new JLabel("Pet Drops");
+        JLabel petLabel = new JLabel("Pets");
         petLabel.setForeground(Color.WHITE);
         panel.add(petLabel);
         petDropsStatusLabel = new JLabel();
@@ -540,6 +520,34 @@ public class OSRSLootTrackerPanel extends PluginPanel
         updateTrackingStatus();
         
         return panel;
+    }
+    
+    private JPanel buildRecentDropsSection()
+    {
+        JPanel recentSection = new JPanel(new BorderLayout());
+        recentSection.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        recentSection.setBorder(new EmptyBorder(10, 0, 0, 0));
+        
+        JLabel recentLabel = new JLabel("Recent Drops");
+        recentLabel.setForeground(BRAND_COLOR);
+        recentLabel.setFont(FontManager.getRunescapeBoldFont());
+        recentSection.add(recentLabel, BorderLayout.NORTH);
+        
+        recentDropsPanel = new JPanel();
+        recentDropsPanel.setLayout(new BoxLayout(recentDropsPanel, BoxLayout.Y_AXIS));
+        recentDropsPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        recentDropsPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
+        
+        JLabel noDropsLabel = new JLabel("No drops yet...");
+        noDropsLabel.setForeground(Color.GRAY);
+        recentDropsPanel.add(noDropsLabel);
+        
+        JScrollPane scrollPane = new JScrollPane(recentDropsPanel);
+        scrollPane.setPreferredSize(new Dimension(0, 150));
+        scrollPane.setBorder(null);
+        recentSection.add(scrollPane, BorderLayout.CENTER);
+        
+        return recentSection;
     }
     
     /**
@@ -577,6 +585,9 @@ public class OSRSLootTrackerPanel extends PluginPanel
             updateTrackingStatus(); // Refresh tracking status from config
             loadUserStats(); // Load user loot statistics
         }
+        
+        // Always update recent drops panel to show any existing drops
+        updateRecentDropsPanel();
         
         revalidate();
         repaint();
