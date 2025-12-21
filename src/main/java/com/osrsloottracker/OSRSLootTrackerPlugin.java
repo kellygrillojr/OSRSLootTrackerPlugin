@@ -31,6 +31,7 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -448,38 +449,27 @@ public class OSRSLootTrackerPlugin extends Plugin
             log.info("LOGGED_IN detected, scheduling RSN check...");
             
             // Schedule a delayed check - RSN takes ~1-2 seconds to be available after login
-            executor.execute(() -> {
-                try
-                {
-                    // Wait for player data to fully load
-                    Thread.sleep(2000);
+            executor.schedule(() -> {
+                // Now get the RSN on the client thread
+                clientThread.invoke(() -> {
+                    String rsn = null;
+                    if (client.getLocalPlayer() != null)
+                    {
+                        rsn = client.getLocalPlayer().getName();
+                    }
+                    log.info("Player RSN after delay: {}", rsn);
                     
-                    // Now get the RSN on the client thread
-                    clientThread.invoke(() -> {
-                        String rsn = null;
-                        if (client.getLocalPlayer() != null)
-                        {
-                            rsn = client.getLocalPlayer().getName();
-                        }
-                        log.info("Player RSN after delay: {}", rsn);
-                        
-                        if (rsn != null && !rsn.isEmpty())
-                        {
-                            SwingUtilities.invokeLater(() -> {
-                                if (panel != null)
-                                {
-                                    panel.refreshStats();
-                                }
-                            });
-                        }
-                    });
-                }
-                catch (InterruptedException e)
-                {
-                    Thread.currentThread().interrupt();
-                    log.warn("RSN check interrupted");
-                }
-            });
+                    if (rsn != null && !rsn.isEmpty())
+                    {
+                        SwingUtilities.invokeLater(() -> {
+                            if (panel != null)
+                            {
+                                panel.refreshStats();
+                            }
+                        });
+                    }
+                });
+            }, 2, TimeUnit.SECONDS);
         }
     }
 
