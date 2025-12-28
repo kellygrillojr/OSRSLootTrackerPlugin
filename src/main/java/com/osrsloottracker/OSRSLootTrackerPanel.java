@@ -472,6 +472,26 @@ public class OSRSLootTrackerPanel extends PluginPanel
         return String.valueOf(value);
     }
     
+    /**
+     * Format GP value in short form for display (100k, 1M, etc.)
+     */
+    private String formatGpShort(int value)
+    {
+        if (value >= 1_000_000_000)
+        {
+            return String.format("%.1fB", value / 1_000_000_000.0);
+        }
+        else if (value >= 1_000_000)
+        {
+            return String.format("%.1fM", value / 1_000_000.0);
+        }
+        else if (value >= 1_000)
+        {
+            return String.format("%dk", value / 1_000);
+        }
+        return value + "gp";
+    }
+    
     private Color getValueColor(long value)
     {
         if (value >= 1_000_000_000) // 1B+
@@ -678,8 +698,36 @@ public class OSRSLootTrackerPanel extends PluginPanel
                 serverLabel.setFont(FontManager.getRunescapeSmallFont());
                 destRow.add(serverLabel, BorderLayout.WEST);
                 
-                int channelCount = dest.channelIds != null ? dest.channelIds.size() : 0;
-                JLabel channelLabel = new JLabel(channelCount + " ch");
+                // Show channel count and min value range
+                List<ChannelConfig> channels = dest.getEffectiveChannels();
+                int channelCount = channels.size();
+                
+                String infoText;
+                if (channelCount == 0)
+                {
+                    infoText = "0 ch";
+                }
+                else if (channelCount == 1)
+                {
+                    String minStr = formatGpShort(channels.get(0).minValue);
+                    infoText = "1 ch @ " + minStr;
+                }
+                else
+                {
+                    // Show range of min values
+                    int minVal = channels.stream().mapToInt(c -> c.minValue).min().orElse(0);
+                    int maxVal = channels.stream().mapToInt(c -> c.minValue).max().orElse(0);
+                    if (minVal == maxVal)
+                    {
+                        infoText = channelCount + " ch @ " + formatGpShort(minVal);
+                    }
+                    else
+                    {
+                        infoText = channelCount + " ch (" + formatGpShort(minVal) + "-" + formatGpShort(maxVal) + ")";
+                    }
+                }
+                
+                JLabel channelLabel = new JLabel(infoText);
                 channelLabel.setForeground(channelCount > 0 ? SUCCESS_COLOR : WARNING_COLOR);
                 channelLabel.setFont(FontManager.getRunescapeSmallFont());
                 destRow.add(channelLabel, BorderLayout.EAST);
@@ -741,7 +789,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
         headerPanel.setBorder(new EmptyBorder(10, 10, 5, 10));
         headerPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
         
-        JLabel instructions = new JLabel("<html>Select servers and channels where your drops will be sent.</html>");
+        JLabel instructions = new JLabel("<html>Select servers and channels. Set minimum drop value per channel (in thousands).</html>");
         instructions.setForeground(Color.WHITE);
         instructions.setAlignmentX(Component.LEFT_ALIGNMENT);
         headerPanel.add(instructions);
@@ -766,6 +814,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
         Map<String, JCheckBox> serverCheckboxes = new HashMap<>();
         Map<String, JScrollPane> channelScrollPanes = new HashMap<>();
         Map<String, List<JCheckBox>> channelCheckboxes = new HashMap<>();
+        Map<String, List<ChannelUIComponents>> channelComponents = new HashMap<>();
         
         for (LootTrackerApiClient.ServerInfo server : availableServers)
         {
@@ -822,7 +871,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
                 channelScroll.setVisible(serverCheck.isSelected());
                 if (serverCheck.isSelected() && !channelCheckboxes.containsKey(server.id))
                 {
-                    loadChannelsForDialog(server.id, finalChannelPanel, channelCheckboxes, destMap.get(server.id));
+                    loadChannelsForDialog(server.id, finalChannelPanel, channelCheckboxes, channelComponents, destMap.get(server.id));
                 }
                 serversContainer.revalidate();
                 serversContainer.repaint();
@@ -831,7 +880,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
             // If already selected, load channels
             if (serverCheck.isSelected())
             {
-                loadChannelsForDialog(server.id, channelPanel, channelCheckboxes, destMap.get(server.id));
+                loadChannelsForDialog(server.id, channelPanel, channelCheckboxes, channelComponents, destMap.get(server.id));
             }
         }
         
@@ -858,7 +907,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
         saveBtn.setBackground(BRAND_COLOR);
         saveBtn.setForeground(Color.WHITE);
         saveBtn.addActionListener(e -> {
-            // Build destinations from selections
+            // Build destinations from selections using the new ChannelConfig format
             List<DestinationConfig> newDestinations = new ArrayList<>();
             
             for (LootTrackerApiClient.ServerInfo server : availableServers)
@@ -868,17 +917,22 @@ public class OSRSLootTrackerPanel extends PluginPanel
                 {
                     DestinationConfig dest = new DestinationConfig();
                     dest.guildId = server.id;
-                    dest.channelIds = new ArrayList<>();
+                    dest.channels = new ArrayList<>();
+                    dest.channelIds = new ArrayList<>(); // Keep for backward compatibility
                     
-                    List<JCheckBox> chBoxes = channelCheckboxes.get(server.id);
-                    if (chBoxes != null)
+                    List<ChannelUIComponents> components = channelComponents.get(server.id);
+                    if (components != null)
                     {
-                        for (JCheckBox chBox : chBoxes)
+                        for (ChannelUIComponents comp : components)
                         {
-                            if (chBox.isSelected())
+                            if (comp.checkbox.isSelected())
                             {
-                                // Channel ID is stored in the checkbox name
-                                dest.channelIds.add(chBox.getName());
+                                // Get min value from spinner (already in GP)
+                                int minValueGp = (Integer) comp.minValueSpinner.getValue();
+                                
+                                ChannelConfig cc = new ChannelConfig(comp.channelId, comp.channelName, minValueGp);
+                                dest.channels.add(cc);
+                                dest.channelIds.add(comp.channelId); // Also populate legacy list
                             }
                         }
                     }
@@ -895,11 +949,30 @@ public class OSRSLootTrackerPanel extends PluginPanel
         dialog.add(buttonPanel, BorderLayout.SOUTH);
         
         // Set dialog size and show
-        dialog.setPreferredSize(new Dimension(420, 500));
-        dialog.setMinimumSize(new Dimension(350, 300));
+        dialog.setPreferredSize(new Dimension(450, 500));
+        dialog.setMinimumSize(new Dimension(400, 300));
         dialog.pack();
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
+    }
+    
+    /**
+     * Data class to hold channel checkbox and its min value spinner
+     */
+    private static class ChannelUIComponents
+    {
+        JCheckBox checkbox;
+        JSpinner minValueSpinner;
+        String channelId;
+        String channelName;
+        
+        ChannelUIComponents(JCheckBox checkbox, JSpinner minValueSpinner, String channelId, String channelName)
+        {
+            this.checkbox = checkbox;
+            this.minValueSpinner = minValueSpinner;
+            this.channelId = channelId;
+            this.channelName = channelName;
+        }
     }
     
     /**
@@ -907,6 +980,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
      */
     private void loadChannelsForDialog(String serverId, JPanel channelPanel, 
                                         Map<String, List<JCheckBox>> channelCheckboxes,
+                                        Map<String, List<ChannelUIComponents>> channelComponents,
                                         DestinationConfig existingConfig)
     {
         apiClient.getServerChannels(serverId).thenAccept(channels -> {
@@ -923,9 +997,17 @@ public class OSRSLootTrackerPanel extends PluginPanel
                 else
                 {
                     List<JCheckBox> checkboxes = new ArrayList<>();
-                    List<String> existingChannelIds = existingConfig != null && existingConfig.channelIds != null 
-                        ? existingConfig.channelIds 
-                        : new ArrayList<>();
+                    List<ChannelUIComponents> components = new ArrayList<>();
+                    
+                    // Build a map of existing channel configs for quick lookup
+                    Map<String, ChannelConfig> existingChannelConfigs = new HashMap<>();
+                    if (existingConfig != null)
+                    {
+                        for (ChannelConfig cc : existingConfig.getEffectiveChannels())
+                        {
+                            existingChannelConfigs.put(cc.channelId, cc);
+                        }
+                    }
                     
                     // Group by category, putting uncategorized channels first
                     Map<String, List<LootTrackerApiClient.ChannelInfo>> byCategory = new java.util.LinkedHashMap<>();
@@ -960,21 +1042,67 @@ public class OSRSLootTrackerPanel extends PluginPanel
                         
                         for (LootTrackerApiClient.ChannelInfo channel : entry.getValue())
                         {
+                            // Row panel for checkbox + min value
+                            JPanel channelRow = new JPanel(new BorderLayout(5, 0));
+                            channelRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
+                            channelRow.setOpaque(false);
+                            channelRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+                            channelRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+                            
+                            // Channel checkbox
                             JCheckBox chBox = new JCheckBox("#" + channel.name);
-                            chBox.setName(channel.id); // Store ID in name for retrieval
+                            chBox.setName(channel.id);
                             chBox.setForeground(Color.WHITE);
                             chBox.setBackground(ColorScheme.DARK_GRAY_COLOR);
                             chBox.setOpaque(false);
-                            chBox.setSelected(existingChannelIds.contains(channel.id));
                             chBox.setFont(FontManager.getRunescapeSmallFont());
-                            chBox.setAlignmentX(Component.LEFT_ALIGNMENT);
-                            chBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
-                            channelPanel.add(chBox);
+                            
+                            // Check if this channel was previously selected
+                            ChannelConfig existingCC = existingChannelConfigs.get(channel.id);
+                            boolean isSelected = existingCC != null;
+                            chBox.setSelected(isSelected);
+                            
+                            channelRow.add(chBox, BorderLayout.WEST);
+                            
+                            // Min value panel (spinner + label)
+                            JPanel minValuePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, 0));
+                            minValuePanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+                            minValuePanel.setOpaque(false);
+                            
+                            JLabel minLabel = new JLabel("Min:");
+                            minLabel.setForeground(new Color(150, 150, 150));
+                            minLabel.setFont(FontManager.getRunescapeSmallFont());
+                            
+                            // Spinner for min value (full GP value, e.g., 100000 for 100k)
+                            int existingMinValue = existingCC != null ? existingCC.minValue : 100000; // Default 100k
+                            SpinnerNumberModel spinnerModel = new SpinnerNumberModel(existingMinValue, 0, 2147483647, 10000);
+                            JSpinner minValueSpinner = new JSpinner(spinnerModel);
+                            minValueSpinner.setPreferredSize(new Dimension(90, 20));
+                            minValueSpinner.setFont(FontManager.getRunescapeSmallFont());
+                            minValueSpinner.setToolTipText("Minimum drop value in GP (e.g., 100000 for 100k)");
+                            
+                            // Only enable spinner when checkbox is selected
+                            minValueSpinner.setEnabled(isSelected);
+                            chBox.addActionListener(e -> minValueSpinner.setEnabled(chBox.isSelected()));
+                            
+                            JLabel gpLabel = new JLabel("GP");
+                            gpLabel.setForeground(new Color(150, 150, 150));
+                            gpLabel.setFont(FontManager.getRunescapeSmallFont());
+                            
+                            minValuePanel.add(minLabel);
+                            minValuePanel.add(minValueSpinner);
+                            minValuePanel.add(gpLabel);
+                            
+                            channelRow.add(minValuePanel, BorderLayout.EAST);
+                            
+                            channelPanel.add(channelRow);
                             checkboxes.add(chBox);
+                            components.add(new ChannelUIComponents(chBox, minValueSpinner, channel.id, channel.name));
                         }
                     }
                     
                     channelCheckboxes.put(serverId, checkboxes);
+                    channelComponents.put(serverId, components);
                     log.info("Loaded {} channels for server {}", checkboxes.size(), serverId);
                 }
                 
@@ -1153,17 +1281,63 @@ public class OSRSLootTrackerPanel extends PluginPanel
     }
     
     /**
+     * Channel configuration with per-channel minimum value
+     */
+    public static class ChannelConfig
+    {
+        public String channelId;
+        public String channelName; // For display purposes
+        public int minValue; // Minimum GP value for this channel (0 = use global default)
+        
+        public ChannelConfig()
+        {
+            this.minValue = 0;
+        }
+        
+        public ChannelConfig(String channelId, String channelName, int minValue)
+        {
+            this.channelId = channelId;
+            this.channelName = channelName;
+            this.minValue = minValue;
+        }
+    }
+    
+    /**
      * Destination configuration - a server with selected channels
      */
     public static class DestinationConfig
     {
         public String guildId;
-        public List<String> channelIds;
+        public List<String> channelIds; // Legacy: simple channel ID list
+        public List<ChannelConfig> channels; // New: channels with per-channel config
         public String eventId; // Optional event ID
         
         public DestinationConfig()
         {
             this.channelIds = new ArrayList<>();
+            this.channels = new ArrayList<>();
+        }
+        
+        /**
+         * Get effective channel configs, supporting both legacy and new format
+         */
+        public List<ChannelConfig> getEffectiveChannels()
+        {
+            // If we have the new channels list, use it
+            if (channels != null && !channels.isEmpty())
+            {
+                return channels;
+            }
+            // Otherwise convert legacy channelIds to ChannelConfig with default (0) minValue
+            List<ChannelConfig> result = new ArrayList<>();
+            if (channelIds != null)
+            {
+                for (String id : channelIds)
+                {
+                    result.add(new ChannelConfig(id, null, 0));
+                }
+            }
+            return result;
         }
     }
 }

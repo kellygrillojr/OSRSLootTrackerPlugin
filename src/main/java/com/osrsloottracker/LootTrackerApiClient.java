@@ -42,6 +42,7 @@ public class LootTrackerApiClient
     /**
      * Submit a loot drop to the server(s)
      * Uses the configured destinations (servers + channels)
+     * Filters channels based on per-channel minimum value thresholds
      */
     public void submitDrop(LootDropData drop) throws IOException
     {
@@ -50,6 +51,8 @@ public class LootTrackerApiClient
             throw new IllegalStateException("Not authenticated");
         }
         
+        int dropValue = drop.getValue();
+        
         // Get configured destinations from config
         String destinationsJson = config.dropDestinations();
         
@@ -57,7 +60,7 @@ public class LootTrackerApiClient
         body.addProperty("username", drop.getUsername());
         body.addProperty("item_name", drop.getItemName());
         body.addProperty("quantity", drop.getQuantity());
-        body.addProperty("item_value", drop.getValue());
+        body.addProperty("item_value", dropValue);
         body.addProperty("monster_name", drop.getSourceName());
         body.addProperty("drop_type", drop.getDropType());
         
@@ -81,7 +84,37 @@ public class LootTrackerApiClient
                 
                 formattedDest.addProperty("guild_id", rawDest.get("guildId").getAsString());
                 
-                if (rawDest.has("channelIds") && !rawDest.get("channelIds").isJsonNull())
+                // Check for new 'channels' format with per-channel min values
+                if (rawDest.has("channels") && !rawDest.get("channels").isJsonNull())
+                {
+                    JsonArray channels = rawDest.getAsJsonArray("channels");
+                    JsonArray filteredChannelIds = new JsonArray();
+                    
+                    for (JsonElement chElem : channels)
+                    {
+                        JsonObject channel = chElem.getAsJsonObject();
+                        String channelId = channel.get("channelId").getAsString();
+                        int minValue = channel.has("minValue") ? channel.get("minValue").getAsInt() : 0;
+                        
+                        // Only include this channel if drop value meets the threshold
+                        if (dropValue >= minValue)
+                        {
+                            filteredChannelIds.add(channelId);
+                        }
+                    }
+                    
+                    // Only add this destination if at least one channel qualifies
+                    if (filteredChannelIds.size() > 0)
+                    {
+                        formattedDest.add("channel_ids", filteredChannelIds);
+                    }
+                    else
+                    {
+                        continue; // Skip this destination entirely
+                    }
+                }
+                // Fall back to legacy channelIds format (no per-channel filtering)
+                else if (rawDest.has("channelIds") && !rawDest.get("channelIds").isJsonNull())
                 {
                     formattedDest.add("channel_ids", rawDest.getAsJsonArray("channelIds"));
                 }
@@ -92,6 +125,12 @@ public class LootTrackerApiClient
                 }
                 
                 formattedDestinations.add(formattedDest);
+            }
+            
+            if (formattedDestinations.size() == 0)
+            {
+                log.info("No destinations meet value threshold for this drop ({}gp)", dropValue);
+                return; // Don't submit if no destinations qualify
             }
             
             body.add("destinations", formattedDestinations);
@@ -120,13 +159,29 @@ public class LootTrackerApiClient
     /**
      * Submit multiple items from the same drop as a batch
      * This sends one Discord message with all items instead of separate messages
+     * Filters channels based on per-channel minimum value thresholds
+     * 
+     * @param items List of items in the drop
+     * @param rsn Player's RuneScape name
+     * @param sourceName Source of the drop (monster name, etc.)
+     * @param dropType Type of drop (NPC, PLAYER, etc.)
+     * @param screenshotUrl URL of screenshot (for premium guilds that saved it)
+     * @param screenshotBase64 Base64 screenshot data (for non-premium guilds, sent as attachment)
      */
     public void submitDropBatch(List<OSRSLootTrackerPlugin.ProcessedItem> items, String rsn, 
-                                 String sourceName, String dropType, String screenshotUrl) throws IOException
+                                 String sourceName, String dropType, String screenshotUrl, 
+                                 String screenshotBase64) throws IOException
     {
         if (!authManager.isAuthenticated())
         {
             throw new IllegalStateException("Not authenticated");
+        }
+        
+        // Calculate total value for filtering
+        int totalValue = 0;
+        for (OSRSLootTrackerPlugin.ProcessedItem item : items)
+        {
+            totalValue += item.value;
         }
         
         // Get configured destinations from config
@@ -139,7 +194,6 @@ public class LootTrackerApiClient
         
         // Build items array
         JsonArray itemsArray = new JsonArray();
-        int totalValue = 0;
         for (OSRSLootTrackerPlugin.ProcessedItem item : items)
         {
             JsonObject itemObj = new JsonObject();
@@ -147,18 +201,23 @@ public class LootTrackerApiClient
             itemObj.addProperty("quantity", item.quantity);
             itemObj.addProperty("item_value", item.value);
             itemsArray.add(itemObj);
-            totalValue += item.value;
         }
         body.add("items", itemsArray);
         body.addProperty("total_value", totalValue);
         
-        // Include screenshot URL if available
+        // Include screenshot URL if available (premium guilds)
         if (screenshotUrl != null && !screenshotUrl.isEmpty())
         {
             body.addProperty("screenshot_url", screenshotUrl);
         }
         
-        // Add destinations
+        // Include base64 screenshot for non-premium guilds (sent as Discord attachment)
+        if (screenshotBase64 != null && !screenshotBase64.isEmpty())
+        {
+            body.addProperty("screenshot_base64", screenshotBase64);
+        }
+        
+        // Add destinations - filter channels based on per-channel min values
         if (destinationsJson != null && !destinationsJson.isEmpty() && !destinationsJson.equals("[]"))
         {
             JsonArray rawDestinations = gson.fromJson(destinationsJson, JsonArray.class);
@@ -171,7 +230,43 @@ public class LootTrackerApiClient
                 
                 formattedDest.addProperty("guild_id", rawDest.get("guildId").getAsString());
                 
-                if (rawDest.has("channelIds") && !rawDest.get("channelIds").isJsonNull())
+                // Check for new 'channels' format with per-channel min values
+                if (rawDest.has("channels") && !rawDest.get("channels").isJsonNull())
+                {
+                    JsonArray channels = rawDest.getAsJsonArray("channels");
+                    JsonArray filteredChannelIds = new JsonArray();
+                    
+                    for (JsonElement chElem : channels)
+                    {
+                        JsonObject channel = chElem.getAsJsonObject();
+                        String channelId = channel.get("channelId").getAsString();
+                        int minValue = channel.has("minValue") ? channel.get("minValue").getAsInt() : 0;
+                        
+                        // Only include this channel if drop value meets the threshold
+                        if (totalValue >= minValue)
+                        {
+                            filteredChannelIds.add(channelId);
+                            log.debug("Channel {} included (drop {}gp >= min {}gp)", channelId, totalValue, minValue);
+                        }
+                        else
+                        {
+                            log.debug("Channel {} excluded (drop {}gp < min {}gp)", channelId, totalValue, minValue);
+                        }
+                    }
+                    
+                    // Only add this destination if at least one channel qualifies
+                    if (filteredChannelIds.size() > 0)
+                    {
+                        formattedDest.add("channel_ids", filteredChannelIds);
+                    }
+                    else
+                    {
+                        log.info("Skipping guild {} - no channels meet value threshold", rawDest.get("guildId").getAsString());
+                        continue; // Skip this destination entirely
+                    }
+                }
+                // Fall back to legacy channelIds format (no per-channel filtering)
+                else if (rawDest.has("channelIds") && !rawDest.get("channelIds").isJsonNull())
                 {
                     formattedDest.add("channel_ids", rawDest.getAsJsonArray("channelIds"));
                 }
@@ -184,8 +279,15 @@ public class LootTrackerApiClient
                 formattedDestinations.add(formattedDest);
             }
             
+            if (formattedDestinations.size() == 0)
+            {
+                log.info("No destinations meet value threshold for this drop ({}gp)", totalValue);
+                return; // Don't submit if no destinations qualify
+            }
+            
             body.add("destinations", formattedDestinations);
-            log.info("Submitting batch drop ({} items) to {} destinations", items.size(), formattedDestinations.size());
+            log.info("Submitting batch drop ({} items, {}gp) to {} destinations", 
+                items.size(), totalValue, formattedDestinations.size());
         }
         else
         {
@@ -202,12 +304,29 @@ public class LootTrackerApiClient
     }
     
     /**
+     * Result of screenshot upload attempt
+     */
+    public static class ScreenshotResult
+    {
+        public final String url;        // URL if saved (premium), null otherwise
+        public final String base64;     // Base64 data to send as attachment (non-premium)
+        public final boolean saved;     // Whether the image was saved to disk
+        
+        public ScreenshotResult(String url, String base64, boolean saved)
+        {
+            this.url = url;
+            this.base64 = base64;
+            this.saved = saved;
+        }
+    }
+    
+    /**
      * Upload a screenshot to the server
      * @param imageBytes PNG image bytes
      * @param guildId The guild ID to save the screenshot under
-     * @return URL of the uploaded image
+     * @return ScreenshotResult with URL (if premium/saved) or base64 (if non-premium)
      */
-    public String uploadScreenshot(byte[] imageBytes, String guildId) throws IOException
+    public ScreenshotResult uploadScreenshot(byte[] imageBytes, String guildId) throws IOException
     {
         if (!authManager.isAuthenticated())
         {
@@ -229,12 +348,11 @@ public class LootTrackerApiClient
         String response = post("/plugin/upload-screenshot", body.toString());
         JsonObject responseJson = gson.fromJson(response, JsonObject.class);
         
-        if (responseJson.has("url"))
-        {
-            return responseJson.get("url").getAsString();
-        }
-        
-        throw new IOException("No URL returned from screenshot upload");
+        // Screenshot is now validated but NOT saved at upload time
+        // Saving happens per-destination in drop submission (only for premium guilds)
+        // We always return base64 so drop submission can handle it per-destination
+        log.info("Screenshot validated - will be saved per-destination for premium guilds");
+        return new ScreenshotResult(null, base64Image, false);
     }
     
     /**
@@ -262,6 +380,119 @@ public class LootTrackerApiClient
         }
         // Fall back to legacy single-server mode
         return config.selectedServerId();
+    }
+    
+    /**
+     * Get the minimum value threshold across all configured channels.
+     * This is the lowest min value of any channel, so we know the minimum
+     * value a drop needs to be to go anywhere.
+     * @return The lowest min value (0 if no channels configured or using legacy format)
+     */
+    public int getLowestChannelMinValue()
+    {
+        String destinationsJson = config.dropDestinations();
+        if (destinationsJson == null || destinationsJson.isEmpty() || destinationsJson.equals("[]"))
+        {
+            return 0; // No destinations, use global default
+        }
+        
+        try
+        {
+            JsonArray rawDestinations = gson.fromJson(destinationsJson, JsonArray.class);
+            int lowestMin = Integer.MAX_VALUE;
+            boolean hasAnyChannel = false;
+            
+            for (JsonElement elem : rawDestinations)
+            {
+                JsonObject rawDest = elem.getAsJsonObject();
+                
+                // Check for new 'channels' format
+                if (rawDest.has("channels") && !rawDest.get("channels").isJsonNull())
+                {
+                    JsonArray channels = rawDest.getAsJsonArray("channels");
+                    for (JsonElement chElem : channels)
+                    {
+                        JsonObject channel = chElem.getAsJsonObject();
+                        int minValue = channel.has("minValue") ? channel.get("minValue").getAsInt() : 0;
+                        lowestMin = Math.min(lowestMin, minValue);
+                        hasAnyChannel = true;
+                    }
+                }
+                // Legacy format - no per-channel filtering
+                else if (rawDest.has("channelIds") && !rawDest.get("channelIds").isJsonNull())
+                {
+                    JsonArray channelIds = rawDest.getAsJsonArray("channelIds");
+                    if (channelIds.size() > 0)
+                    {
+                        lowestMin = 0; // Legacy channels have no min value filter
+                        hasAnyChannel = true;
+                    }
+                }
+            }
+            
+            return hasAnyChannel ? (lowestMin == Integer.MAX_VALUE ? 0 : lowestMin) : 0;
+        }
+        catch (Exception e)
+        {
+            log.error("Error parsing destinations for min value check", e);
+            return 0;
+        }
+    }
+    
+    /**
+     * Check if a drop with the given value would be sent to at least one channel
+     * @param dropValue The GP value of the drop
+     * @return true if at least one channel would receive this drop
+     */
+    public boolean wouldDropBeSent(int dropValue)
+    {
+        String destinationsJson = config.dropDestinations();
+        if (destinationsJson == null || destinationsJson.isEmpty() || destinationsJson.equals("[]"))
+        {
+            // Check legacy single-server mode
+            return config.selectedServerId() != null && !config.selectedServerId().isEmpty();
+        }
+        
+        try
+        {
+            JsonArray rawDestinations = gson.fromJson(destinationsJson, JsonArray.class);
+            
+            for (JsonElement elem : rawDestinations)
+            {
+                JsonObject rawDest = elem.getAsJsonObject();
+                
+                // Check for new 'channels' format
+                if (rawDest.has("channels") && !rawDest.get("channels").isJsonNull())
+                {
+                    JsonArray channels = rawDest.getAsJsonArray("channels");
+                    for (JsonElement chElem : channels)
+                    {
+                        JsonObject channel = chElem.getAsJsonObject();
+                        int minValue = channel.has("minValue") ? channel.get("minValue").getAsInt() : 0;
+                        if (dropValue >= minValue)
+                        {
+                            return true; // At least one channel would receive this drop
+                        }
+                    }
+                }
+                // Legacy format - no per-channel filtering, always accept
+                else if (rawDest.has("channelIds") && !rawDest.get("channelIds").isJsonNull())
+                {
+                    JsonArray channelIds = rawDest.getAsJsonArray("channelIds");
+                    if (channelIds.size() > 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            
+            return false; // No channel would receive this drop
+        }
+        catch (Exception e)
+        {
+            log.error("Error checking if drop would be sent", e);
+            return true; // Assume yes on error
+        }
     }
     
     /**

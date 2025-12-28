@@ -20,11 +20,8 @@ public interface OSRSLootTrackerConfig extends Config
     )
     String trackingSection = "tracking";
 
-    @ConfigSection(
-        name = "Filters",
-        description = "Filter settings",
-        position = 2
-    )
+    // Filters section removed - per-channel min values are now in Destinations dialog
+    // Keeping the key for hidden config items
     String filtersSection = "filters";
 
     // === Authentication Section (Hidden - internal use only) ===
@@ -172,12 +169,16 @@ public interface OSRSLootTrackerConfig extends Config
     }
 
     // === Filters Section ===
+    
+    // Note: minLootValue is now deprecated - per-channel minimum values are configured
+    // in the Destinations dialog. This is kept for backward compatibility but hidden.
 
     @ConfigItem(
         keyName = "minLootValue",
         name = "Minimum Value",
-        description = "Minimum GP value to track a drop (0 = track all)",
+        description = "Deprecated: Use per-channel values in Configure Destinations instead",
         section = filtersSection,
+        hidden = true,
         position = 0
     )
     @Range(min = 0, max = 100000000)
@@ -186,11 +187,13 @@ public interface OSRSLootTrackerConfig extends Config
         return 100000; // 100k default
     }
 
+    // Note: includeUntradeable is not yet implemented - hidden for now
     @ConfigItem(
         keyName = "includeUntradeable",
         name = "Include Untradeable",
-        description = "Include untradeable items (pets, uniques, etc.)",
+        description = "Include untradeable items (pets, uniques, etc.) - not yet implemented",
         section = filtersSection,
+        hidden = true,
         position = 1
     )
     default boolean includeUntradeable()

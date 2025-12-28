@@ -168,7 +168,7 @@ public class OSRSLootTrackerPlugin extends Plugin
         // methods must be called on the client thread. We store the processed data for 
         // use in the async callback.
         final List<ProcessedItem> processedItems = new ArrayList<>();
-        boolean hasValuableDrop = false;
+        int totalDropValue = 0;
         
         for (ItemStack item : event.getItems())
         {
@@ -178,31 +178,31 @@ public class OSRSLootTrackerPlugin extends Plugin
             final String itemName = itemManager.getItemComposition(itemId).getName();
             
             processedItems.add(new ProcessedItem(itemName, quantity, value));
-            
-            if (value >= config.minLootValue())
-            {
-                hasValuableDrop = true;
-            }
+            totalDropValue += value;
         }
         
-        log.info("Processing loot for RSN: {}, from: {}, items: {}", rsn, sourceName, processedItems.size());
+        log.info("Processing loot for RSN: {}, from: {}, items: {}, total value: {}gp", 
+            rsn, sourceName, processedItems.size(), totalDropValue);
 
-        if (!hasValuableDrop)
+        // Check if this drop would be sent to at least one channel based on per-channel thresholds
+        if (!apiClient.wouldDropBeSent(totalDropValue))
         {
-            log.debug("No items above minimum value threshold");
+            log.debug("Drop value {}gp doesn't meet any channel threshold", totalDropValue);
             return;
         }
 
         // Capture screenshot if enabled
         if (config.captureScreenshots())
         {
-            captureScreenshot(screenshot -> {
-                submitProcessedItems(processedItems, rsn, sourceName, type, screenshot);
+            captureScreenshot(screenshotData -> {
+                String url = screenshotData != null ? screenshotData.url : null;
+                String base64 = screenshotData != null ? screenshotData.base64 : null;
+                submitProcessedItems(processedItems, rsn, sourceName, type, url, base64);
             });
         }
         else
         {
-            submitProcessedItems(processedItems, rsn, sourceName, type, null);
+            submitProcessedItems(processedItems, rsn, sourceName, type, null, null);
         }
     }
     
@@ -224,9 +224,25 @@ public class OSRSLootTrackerPlugin extends Plugin
     }
     
     /**
-     * Capture a screenshot and pass it to the callback
+     * Screenshot result containing URL (if saved) and/or base64 (for non-premium)
      */
-    private void captureScreenshot(Consumer<String> callback)
+    private static class ScreenshotData
+    {
+        final String url;
+        final String base64;
+        
+        ScreenshotData(String url, String base64)
+        {
+            this.url = url;
+            this.base64 = base64;
+        }
+    }
+    
+    /**
+     * Capture a screenshot and pass it to the callback
+     * Returns ScreenshotData with URL (if premium/saved) and/or base64 (for non-premium)
+     */
+    private void captureScreenshot(Consumer<ScreenshotData> callback)
     {
         // Get the first configured guild ID for screenshot storage
         String guildId = apiClient.getFirstConfiguredGuildId();
@@ -251,13 +267,11 @@ public class OSRSLootTrackerPlugin extends Plugin
                     ImageIO.write(screenshot, "png", baos);
                     byte[] imageBytes = baos.toByteArray();
                     
-                    // Upload to backend and get URL (saved to guild-specific directory)
-                    String imageUrl = apiClient.uploadScreenshot(imageBytes, guildId);
-                    log.info("Screenshot uploaded to guild_{}: {}", guildId, imageUrl);
+                    // Validate screenshot with backend - saving happens per-destination
+                    LootTrackerApiClient.ScreenshotResult result = apiClient.uploadScreenshot(imageBytes, guildId);
+                    log.info("Screenshot validated - will be processed per-destination");
                     
-                    log.info("Invoking callback with screenshot URL");
-                    callback.accept(imageUrl);
-                    log.info("Callback completed");
+                    callback.accept(new ScreenshotData(result.url, result.base64));
                 }
                 catch (Exception e)
                 {
@@ -269,57 +283,58 @@ public class OSRSLootTrackerPlugin extends Plugin
     }
     
     /**
-     * Submit pre-processed items to the backend as a batch
+     * Submit pre-processed items to the backend as a batch.
+     * Per-channel filtering is done in the API client based on total drop value.
+     * 
+     * @param items List of items to submit
+     * @param rsn Player's RuneScape name
+     * @param sourceName Source of the drop
+     * @param type Type of loot record
+     * @param screenshotUrl URL of saved screenshot (for premium guilds)
+     * @param screenshotBase64 Base64 screenshot data (for non-premium guilds)
      */
     private void submitProcessedItems(List<ProcessedItem> items, String rsn, String sourceName, 
-                                       LootRecordType type, String screenshotUrl)
+                                       LootRecordType type, String screenshotUrl, String screenshotBase64)
     {
         log.info("submitProcessedItems called with {} items, rsn={}, source={}, screenshot={}", 
-            items.size(), rsn, sourceName, screenshotUrl != null ? "yes" : "no");
+            items.size(), rsn, sourceName, (screenshotUrl != null || screenshotBase64 != null) ? "yes" : "no");
         
-        // Filter items that meet the threshold
-        List<ProcessedItem> valuableItems = new ArrayList<>();
+        // Calculate total value (per-channel filtering happens in API client)
         int totalValue = 0;
-        
         for (ProcessedItem item : items)
         {
-            log.info("Processing item: {} x{} = {}gp (min threshold: {})", 
-                item.name, item.quantity, item.value, config.minLootValue());
-
-            if (item.value >= config.minLootValue())
-            {
-                valuableItems.add(item);
-                totalValue += item.value;
-            }
-            else
-            {
-                log.info("Skipping {} - below minimum value threshold", item.name);
-            }
+            log.debug("Item: {} x{} = {}gp", item.name, item.quantity, item.value);
+            totalValue += item.value;
         }
         
-        if (valuableItems.isEmpty())
+        if (items.isEmpty())
         {
-            log.info("No valuable items to submit");
+            log.info("No items to submit");
             return;
         }
         
-        // Submit all valuable items as a batch
+        // Submit all items as a batch - API client will filter by per-channel thresholds
         final int finalTotalValue = totalValue;
+        final List<ProcessedItem> itemsCopy = new ArrayList<>(items);
+        final String finalScreenshotUrl = screenshotUrl;
+        final String finalScreenshotBase64 = screenshotBase64;
         executor.execute(() -> {
             try
             {
                 log.info("Submitting {} items from {} (total: {}gp) with screenshot: {}", 
-                    valuableItems.size(), sourceName, finalTotalValue, screenshotUrl != null);
+                    itemsCopy.size(), sourceName, finalTotalValue, 
+                    (finalScreenshotUrl != null || finalScreenshotBase64 != null));
                 
-                apiClient.submitDropBatch(valuableItems, rsn, sourceName, type.name(), screenshotUrl);
-                log.info("Successfully submitted {} items", valuableItems.size());
+                apiClient.submitDropBatch(itemsCopy, rsn, sourceName, type.name(), 
+                    finalScreenshotUrl, finalScreenshotBase64);
+                log.info("Successfully submitted {} items", itemsCopy.size());
                 
                 // Update panel with each drop
-                for (ProcessedItem item : valuableItems)
+                for (ProcessedItem item : itemsCopy)
                 {
                     LootDropData drop = new LootDropData(
                         rsn, item.name, item.quantity, item.value, 
-                        sourceName, type.name(), screenshotUrl
+                        sourceName, type.name(), finalScreenshotUrl
                     );
                     SwingUtilities.invokeLater(() -> panel.addRecentDrop(drop));
                 }

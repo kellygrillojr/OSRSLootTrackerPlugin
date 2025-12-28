@@ -9,12 +9,11 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.util.LinkBrowser;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.awt.*;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -130,20 +129,12 @@ public class AuthenticationManager
             log.info("Starting OAuth flow with session: {}", sessionId);
             log.info("Redirect URI: {}", redirectUri);
             
-            // Open browser
-            if (Desktop.isDesktopSupported())
-            {
-                Desktop.getDesktop().browse(new URI(authUrl));
-                log.info("Opened browser for Discord authentication");
-                
-                // Start polling for auth result
-                startPolling(sessionId);
-            }
-            else
-            {
-                log.error("Desktop not supported, cannot open browser");
-                callback.accept(AuthResult.error("Cannot open browser for authentication"));
-            }
+            // Open browser using RuneLite's LinkBrowser
+            LinkBrowser.browse(authUrl);
+            log.info("Opened browser for Discord authentication");
+            
+            // Start polling for auth result
+            startPolling(sessionId);
         }
         catch (Exception e)
         {
