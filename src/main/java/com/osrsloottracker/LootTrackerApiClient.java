@@ -496,9 +496,17 @@ public class LootTrackerApiClient
     }
     
     /**
-     * Submit a collection log entry
+     * Submit a collection log entry (legacy - no screenshot)
      */
     public void submitCollectionLogEntry(LootDropData drop) throws IOException
+    {
+        submitCollectionLogEntry(drop, null, null);
+    }
+    
+    /**
+     * Submit a collection log entry with optional screenshot
+     */
+    public void submitCollectionLogEntry(LootDropData drop, String screenshotUrl, String screenshotBase64) throws IOException
     {
         if (!authManager.isAuthenticated())
         {
@@ -512,6 +520,16 @@ public class LootTrackerApiClient
         body.addProperty("username", drop.getUsername());
         body.addProperty("item_name", drop.getItemName());
         
+        // Add screenshot if available
+        if (screenshotUrl != null && !screenshotUrl.isEmpty())
+        {
+            body.addProperty("image_url", screenshotUrl);
+        }
+        if (screenshotBase64 != null && !screenshotBase64.isEmpty())
+        {
+            body.addProperty("image_base64", screenshotBase64);
+        }
+        
         // Use first destination's guild_id for collection log (or legacy mode)
         if (destinationsJson != null && !destinationsJson.isEmpty() && !destinationsJson.equals("[]"))
         {
@@ -520,6 +538,35 @@ public class LootTrackerApiClient
             {
                 JsonObject firstDest = rawDestinations.get(0).getAsJsonObject();
                 body.addProperty("guild_id", firstDest.get("guildId").getAsString());
+                
+                // Add channel IDs for the collection log entry
+                if (firstDest.has("channels") && firstDest.get("channels").isJsonArray())
+                {
+                    JsonArray channels = firstDest.get("channels").getAsJsonArray();
+                    JsonArray channelIds = new JsonArray();
+                    for (int i = 0; i < channels.size(); i++)
+                    {
+                        JsonObject ch = channels.get(i).getAsJsonObject();
+                        // Check for "id" field (new format) or "channelId" field (old format)
+                        if (ch.has("id") && !ch.get("id").isJsonNull())
+                        {
+                            channelIds.add(ch.get("id").getAsString());
+                        }
+                        else if (ch.has("channelId") && !ch.get("channelId").isJsonNull())
+                        {
+                            channelIds.add(ch.get("channelId").getAsString());
+                        }
+                    }
+                    if (channelIds.size() > 0)
+                    {
+                        body.add("channel_ids", channelIds);
+                    }
+                }
+                // Fallback: check for channelIds array directly on destination
+                else if (firstDest.has("channelIds") && firstDest.get("channelIds").isJsonArray())
+                {
+                    body.add("channel_ids", firstDest.get("channelIds").getAsJsonArray());
+                }
                 
                 if (firstDest.has("eventId") && !firstDest.get("eventId").isJsonNull())
                 {
