@@ -145,23 +145,11 @@ public interface OSRSLootTrackerConfig extends Config
     }
 
     @ConfigItem(
-        keyName = "trackRaidDrops",
-        name = "Track Raid Drops",
-        description = "Track drops from CoX, ToB, and ToA",
-        section = trackingSection,
-        position = 3
-    )
-    default boolean trackRaidDrops()
-    {
-        return true;
-    }
-    
-    @ConfigItem(
         keyName = "captureScreenshots",
         name = "Capture Screenshots",
         description = "Take a screenshot when valuable loot is received and include it with the drop",
         section = trackingSection,
-        position = 4
+        position = 3
     )
     default boolean captureScreenshots()
     {

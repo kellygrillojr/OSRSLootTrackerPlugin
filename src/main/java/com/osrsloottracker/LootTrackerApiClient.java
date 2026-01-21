@@ -230,7 +230,7 @@ public class LootTrackerApiClient
                 
                 formattedDest.addProperty("guild_id", rawDest.get("guildId").getAsString());
                 
-                // Check for new 'channels' format with per-channel min values
+                // Check for new 'channels' format with per-channel min values and drop type filters
                 if (rawDest.has("channels") && !rawDest.get("channels").isJsonNull())
                 {
                     JsonArray channels = rawDest.getAsJsonArray("channels");
@@ -242,7 +242,16 @@ public class LootTrackerApiClient
                         String channelId = channel.get("channelId").getAsString();
                         int minValue = channel.has("minValue") ? channel.get("minValue").getAsInt() : 0;
                         
-                        // Only include this channel if drop value meets the threshold
+                        // Check if this channel accepts valuable drops (default to true for backward compatibility)
+                        boolean sendValuableDrops = !channel.has("sendValuableDrops") || channel.get("sendValuableDrops").getAsBoolean();
+                        
+                        // Only include this channel if it accepts valuable drops and drop value meets threshold
+                        if (!sendValuableDrops)
+                        {
+                            log.debug("Channel {} excluded (sendValuableDrops=false)", channelId);
+                            continue;
+                        }
+                        
                         if (totalValue >= minValue)
                         {
                             filteredChannelIds.add(channelId);
@@ -261,7 +270,7 @@ public class LootTrackerApiClient
                     }
                     else
                     {
-                        log.info("Skipping guild {} - no channels meet value threshold", rawDest.get("guildId").getAsString());
+                        log.info("Skipping guild {} - no channels meet value/type filter", rawDest.get("guildId").getAsString());
                         continue; // Skip this destination entirely
                     }
                 }
@@ -530,49 +539,100 @@ public class LootTrackerApiClient
             body.addProperty("image_base64", screenshotBase64);
         }
         
-        // Use first destination's guild_id for collection log (or legacy mode)
+        // Build destinations, filtering channels that have sendCollectionLog enabled
         if (destinationsJson != null && !destinationsJson.isEmpty() && !destinationsJson.equals("[]"))
         {
             JsonArray rawDestinations = gson.fromJson(destinationsJson, JsonArray.class);
-            if (rawDestinations.size() > 0)
+            JsonArray formattedDestinations = new JsonArray();
+            
+            for (JsonElement destElem : rawDestinations)
             {
-                JsonObject firstDest = rawDestinations.get(0).getAsJsonObject();
-                body.addProperty("guild_id", firstDest.get("guildId").getAsString());
+                JsonObject rawDest = destElem.getAsJsonObject();
+                JsonObject formattedDest = new JsonObject();
                 
-                // Add channel IDs for the collection log entry
-                if (firstDest.has("channels") && firstDest.get("channels").isJsonArray())
+                formattedDest.addProperty("guild_id", rawDest.get("guildId").getAsString());
+                
+                // Filter channels that accept collection log entries
+                if (rawDest.has("channels") && rawDest.get("channels").isJsonArray())
                 {
-                    JsonArray channels = firstDest.get("channels").getAsJsonArray();
-                    JsonArray channelIds = new JsonArray();
+                    JsonArray channels = rawDest.get("channels").getAsJsonArray();
+                    JsonArray filteredChannelIds = new JsonArray();
+                    
                     for (int i = 0; i < channels.size(); i++)
                     {
                         JsonObject ch = channels.get(i).getAsJsonObject();
-                        // Check for "id" field (new format) or "channelId" field (old format)
-                        if (ch.has("id") && !ch.get("id").isJsonNull())
+                        
+                        // Check if this channel accepts collection log (default to true for backward compat)
+                        boolean sendCollectionLog = !ch.has("sendCollectionLog") || ch.get("sendCollectionLog").getAsBoolean();
+                        
+                        if (!sendCollectionLog)
                         {
-                            channelIds.add(ch.get("id").getAsString());
+                            log.debug("Channel excluded from collection log (sendCollectionLog=false)");
+                            continue;
                         }
-                        else if (ch.has("channelId") && !ch.get("channelId").isJsonNull())
+                        
+                        // Get channel ID (check both formats)
+                        String channelId = null;
+                        if (ch.has("channelId") && !ch.get("channelId").isJsonNull())
                         {
-                            channelIds.add(ch.get("channelId").getAsString());
+                            channelId = ch.get("channelId").getAsString();
+                        }
+                        else if (ch.has("id") && !ch.get("id").isJsonNull())
+                        {
+                            channelId = ch.get("id").getAsString();
+                        }
+                        
+                        if (channelId != null)
+                        {
+                            filteredChannelIds.add(channelId);
+                            log.debug("Channel {} included for collection log", channelId);
                         }
                     }
-                    if (channelIds.size() > 0)
+                    
+                    // Only add destination if at least one channel qualifies
+                    if (filteredChannelIds.size() > 0)
                     {
-                        body.add("channel_ids", channelIds);
+                        formattedDest.add("channel_ids", filteredChannelIds);
+                    }
+                    else
+                    {
+                        log.info("Skipping guild {} for collection log - no channels accept collection log", 
+                            rawDest.get("guildId").getAsString());
+                        continue;
                     }
                 }
-                // Fallback: check for channelIds array directly on destination
-                else if (firstDest.has("channelIds") && firstDest.get("channelIds").isJsonArray())
+                // Fallback: legacy channelIds format (send to all)
+                else if (rawDest.has("channelIds") && rawDest.get("channelIds").isJsonArray())
                 {
-                    body.add("channel_ids", firstDest.get("channelIds").getAsJsonArray());
+                    formattedDest.add("channel_ids", rawDest.get("channelIds").getAsJsonArray());
+                }
+                else
+                {
+                    log.info("Skipping guild {} for collection log - no channels configured", 
+                        rawDest.get("guildId").getAsString());
+                    continue;
                 }
                 
-                if (firstDest.has("eventId") && !firstDest.get("eventId").isJsonNull())
+                if (rawDest.has("eventId") && !rawDest.get("eventId").isJsonNull())
                 {
-                    body.addProperty("event_id", firstDest.get("eventId").getAsString());
+                    formattedDest.addProperty("event_id", rawDest.get("eventId").getAsString());
                 }
+                
+                formattedDestinations.add(formattedDest);
             }
+            
+            if (formattedDestinations.size() == 0)
+            {
+                log.info("No destinations accept collection log entries, skipping submission");
+                return;
+            }
+            
+            body.add("destinations", formattedDestinations);
+            
+            // For backward compatibility, also set guild_id from first destination
+            JsonObject firstDest = formattedDestinations.get(0).getAsJsonObject();
+            body.addProperty("guild_id", firstDest.get("guild_id").getAsString());
+            body.add("channel_ids", firstDest.get("channel_ids").getAsJsonArray());
         }
         else
         {
@@ -587,23 +647,156 @@ public class LootTrackerApiClient
     }
     
     /**
-     * Submit a pet drop
+     * Submit a pet drop (legacy - no screenshot)
      */
     public void submitPetDrop(LootDropData drop, String message) throws IOException
+    {
+        submitPetDrop(drop, message, null, null, null);
+    }
+    
+    /**
+     * Submit a pet drop with optional screenshot (legacy without pet name)
+     */
+    public void submitPetDrop(LootDropData drop, String message, String screenshotUrl, String screenshotBase64) throws IOException
+    {
+        submitPetDrop(drop, message, null, screenshotUrl, screenshotBase64);
+    }
+    
+    /**
+     * Submit a pet drop with optional screenshot and pet name
+     */
+    public void submitPetDrop(LootDropData drop, String message, String petName, String screenshotUrl, String screenshotBase64) throws IOException
     {
         if (!authManager.isAuthenticated())
         {
             throw new IllegalStateException("Not authenticated");
         }
         
+        // Get configured destinations
+        String destinationsJson = config.dropDestinations();
+        
         JsonObject body = new JsonObject();
         body.addProperty("username", drop.getUsername());
         body.addProperty("message", message);
-        body.addProperty("guild_id", config.selectedServerId());
         
-        if (!config.selectedEventId().isEmpty())
+        // Add pet name if available
+        if (petName != null && !petName.isEmpty())
         {
-            body.addProperty("event_id", config.selectedEventId());
+            body.addProperty("pet_name", petName);
+        }
+        
+        // Add screenshot if available
+        if (screenshotUrl != null && !screenshotUrl.isEmpty())
+        {
+            body.addProperty("image_url", screenshotUrl);
+        }
+        if (screenshotBase64 != null && !screenshotBase64.isEmpty())
+        {
+            body.addProperty("image_base64", screenshotBase64);
+        }
+        
+        // Build destinations, filtering channels that have sendPets enabled
+        if (destinationsJson != null && !destinationsJson.isEmpty() && !destinationsJson.equals("[]"))
+        {
+            JsonArray rawDestinations = gson.fromJson(destinationsJson, JsonArray.class);
+            JsonArray formattedDestinations = new JsonArray();
+            
+            for (JsonElement destElem : rawDestinations)
+            {
+                JsonObject rawDest = destElem.getAsJsonObject();
+                JsonObject formattedDest = new JsonObject();
+                
+                formattedDest.addProperty("guild_id", rawDest.get("guildId").getAsString());
+                
+                // Filter channels that accept pet drops
+                if (rawDest.has("channels") && rawDest.get("channels").isJsonArray())
+                {
+                    JsonArray channels = rawDest.get("channels").getAsJsonArray();
+                    JsonArray filteredChannelIds = new JsonArray();
+                    
+                    for (int i = 0; i < channels.size(); i++)
+                    {
+                        JsonObject ch = channels.get(i).getAsJsonObject();
+                        
+                        // Check if this channel accepts pets (default to true for backward compat)
+                        boolean sendPets = !ch.has("sendPets") || ch.get("sendPets").getAsBoolean();
+                        
+                        if (!sendPets)
+                        {
+                            log.debug("Channel excluded from pet drops (sendPets=false)");
+                            continue;
+                        }
+                        
+                        // Get channel ID (check both formats)
+                        String channelId = null;
+                        if (ch.has("channelId") && !ch.get("channelId").isJsonNull())
+                        {
+                            channelId = ch.get("channelId").getAsString();
+                        }
+                        else if (ch.has("id") && !ch.get("id").isJsonNull())
+                        {
+                            channelId = ch.get("id").getAsString();
+                        }
+                        
+                        if (channelId != null)
+                        {
+                            filteredChannelIds.add(channelId);
+                            log.debug("Channel {} included for pet drop", channelId);
+                        }
+                    }
+                    
+                    // Only add destination if at least one channel qualifies
+                    if (filteredChannelIds.size() > 0)
+                    {
+                        formattedDest.add("channel_ids", filteredChannelIds);
+                    }
+                    else
+                    {
+                        log.info("Skipping guild {} for pet drop - no channels accept pets", 
+                            rawDest.get("guildId").getAsString());
+                        continue;
+                    }
+                }
+                // Fallback: legacy channelIds format (send to all)
+                else if (rawDest.has("channelIds") && rawDest.get("channelIds").isJsonArray())
+                {
+                    formattedDest.add("channel_ids", rawDest.get("channelIds").getAsJsonArray());
+                }
+                else
+                {
+                    log.info("Skipping guild {} for pet drop - no channels configured", 
+                        rawDest.get("guildId").getAsString());
+                    continue;
+                }
+                
+                if (rawDest.has("eventId") && !rawDest.get("eventId").isJsonNull())
+                {
+                    formattedDest.addProperty("event_id", rawDest.get("eventId").getAsString());
+                }
+                
+                formattedDestinations.add(formattedDest);
+            }
+            
+            if (formattedDestinations.size() == 0)
+            {
+                log.info("No destinations accept pet drops, skipping submission");
+                return;
+            }
+            
+            body.add("destinations", formattedDestinations);
+            
+            // For backward compatibility, also set guild_id from first destination
+            JsonObject firstDest = formattedDestinations.get(0).getAsJsonObject();
+            body.addProperty("guild_id", firstDest.get("guild_id").getAsString());
+            body.add("channel_ids", firstDest.get("channel_ids").getAsJsonArray());
+        }
+        else
+        {
+            body.addProperty("guild_id", config.selectedServerId());
+            if (!config.selectedEventId().isEmpty())
+            {
+                body.addProperty("event_id", config.selectedEventId());
+            }
         }
         
         post("/plugin/pets", body.toString());
