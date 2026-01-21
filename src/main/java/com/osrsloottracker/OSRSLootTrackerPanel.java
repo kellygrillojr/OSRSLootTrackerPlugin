@@ -41,6 +41,9 @@ public class OSRSLootTrackerPanel extends PluginPanel
     private final ConfigManager configManager;
     private final Gson gson;
     
+    // Reference to main plugin for test methods
+    private OSRSLootTrackerPlugin plugin;
+    
     // UI Components
     private JPanel authPanel;
     private JPanel mainPanel;
@@ -54,7 +57,9 @@ public class OSRSLootTrackerPanel extends PluginPanel
     private JLabel totalDropsLabel;
     private JLabel totalValueLabel;
     private JLabel todayDropsLabel;
+    private JLabel todayValueLabel;
     private JLabel weekDropsLabel;
+    private JLabel weekValueLabel;
     
     // Tracking status labels (for live updates)
     private JLabel lootDropsStatusLabel;
@@ -80,6 +85,14 @@ public class OSRSLootTrackerPanel extends PluginPanel
         this.config = config;
         this.configManager = configManager;
         this.gson = gson;
+    }
+    
+    /**
+     * Set reference to the main plugin (for test methods)
+     */
+    public void setPlugin(OSRSLootTrackerPlugin plugin)
+    {
+        this.plugin = plugin;
     }
     
     public void init()
@@ -306,6 +319,37 @@ public class OSRSLootTrackerPanel extends PluginPanel
         dashboardBtn.addActionListener(e -> LinkBrowser.browse("https://osrsloottracker.com/dashboard"));
         panel.add(dashboardBtn);
         
+        // DEBUG: Test buttons (only shown when DEBUG_MODE is true)
+        if (OSRSLootTrackerPlugin.DEBUG_MODE)
+        {
+            panel.add(Box.createVerticalStrut(10));
+            JLabel debugLabel = new JLabel("--- DEBUG ---");
+            debugLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            debugLabel.setForeground(Color.ORANGE);
+            debugLabel.setFont(FontManager.getRunescapeSmallFont());
+            panel.add(debugLabel);
+            
+            JButton testPetBtn = new JButton("Test Pet Drop");
+            testPetBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+            testPetBtn.setBackground(new Color(255, 215, 0)); // Gold
+            testPetBtn.addActionListener(e -> {
+                if (plugin != null) {
+                    plugin.simulatePetDrop();
+                }
+            });
+            panel.add(testPetBtn);
+            
+            JButton testCollectionBtn = new JButton("Test Collection Log");
+            testCollectionBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+            testCollectionBtn.setBackground(new Color(138, 43, 226)); // Purple
+            testCollectionBtn.addActionListener(e -> {
+                if (plugin != null) {
+                    plugin.simulateCollectionLog();
+                }
+            });
+            panel.add(testCollectionBtn);
+        }
+        
         return panel;
     }
     
@@ -321,30 +365,37 @@ public class OSRSLootTrackerPanel extends PluginPanel
         headerLabel.setFont(FontManager.getRunescapeBoldFont());
         panel.add(headerLabel, BorderLayout.NORTH);
         
-        // Stats grid - use GridLayout for equal sizing
-        JPanel statsGrid = new JPanel(new GridLayout(2, 2, 8, 8));
+        // Stats grid - use GridLayout for equal sizing (3 rows x 2 columns)
+        JPanel statsGrid = new JPanel(new GridLayout(3, 2, 8, 8));
         statsGrid.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         statsGrid.setBorder(new EmptyBorder(8, 0, 0, 0));
         
-        // Total drops
+        // Row 1: Total drops and Total value
         JPanel totalDropsBox = createStatBox("Total Drops", "0");
         totalDropsLabel = (JLabel) ((JPanel) totalDropsBox.getComponent(1)).getComponent(0);
         statsGrid.add(totalDropsBox);
         
-        // Total value
         JPanel totalValueBox = createStatBox("Total Value", "0 GP");
         totalValueLabel = (JLabel) ((JPanel) totalValueBox.getComponent(1)).getComponent(0);
         statsGrid.add(totalValueBox);
         
-        // Today's drops
-        JPanel todayBox = createStatBox("Today", "0 drops");
-        todayDropsLabel = (JLabel) ((JPanel) todayBox.getComponent(1)).getComponent(0);
-        statsGrid.add(todayBox);
+        // Row 2: Week's drops and Week's value
+        JPanel weekDropsBox = createStatBox("Week's Drops", "0");
+        weekDropsLabel = (JLabel) ((JPanel) weekDropsBox.getComponent(1)).getComponent(0);
+        statsGrid.add(weekDropsBox);
         
-        // This week
-        JPanel weekBox = createStatBox("This Week", "0 drops");
-        weekDropsLabel = (JLabel) ((JPanel) weekBox.getComponent(1)).getComponent(0);
-        statsGrid.add(weekBox);
+        JPanel weekValueBox = createStatBox("Week's Value", "0 GP");
+        weekValueLabel = (JLabel) ((JPanel) weekValueBox.getComponent(1)).getComponent(0);
+        statsGrid.add(weekValueBox);
+        
+        // Row 3: Today's drops and Today's value
+        JPanel todayDropsBox = createStatBox("Today's Drops", "0");
+        todayDropsLabel = (JLabel) ((JPanel) todayDropsBox.getComponent(1)).getComponent(0);
+        statsGrid.add(todayDropsBox);
+        
+        JPanel todayValueBox = createStatBox("Today's Value", "0 GP");
+        todayValueLabel = (JLabel) ((JPanel) todayValueBox.getComponent(1)).getComponent(0);
+        statsGrid.add(todayValueBox);
         
         panel.add(statsGrid, BorderLayout.CENTER);
         
@@ -421,13 +472,17 @@ public class OSRSLootTrackerPanel extends PluginPanel
                     // Today's stats
                     if (stats.periods != null && stats.periods.today != null)
                     {
-                        todayDropsLabel.setText(stats.periods.today.drops + " drops");
+                        todayDropsLabel.setText(formatNumber(stats.periods.today.drops));
+                        todayValueLabel.setText(formatValue(stats.periods.today.value) + " GP");
+                        todayValueLabel.setForeground(getValueColor(stats.periods.today.value));
                     }
                     
                     // Week stats
                     if (stats.periods != null && stats.periods.week != null)
                     {
-                        weekDropsLabel.setText(stats.periods.week.drops + " drops");
+                        weekDropsLabel.setText(formatNumber(stats.periods.week.drops));
+                        weekValueLabel.setText(formatValue(stats.periods.week.value) + " GP");
+                        weekValueLabel.setForeground(getValueColor(stats.periods.week.value));
                     }
                 }
                 else
@@ -678,10 +733,6 @@ public class OSRSLootTrackerPanel extends PluginPanel
         {
             for (DestinationConfig dest : destinations)
             {
-                JPanel destRow = new JPanel(new BorderLayout());
-                destRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-                destRow.setBorder(new EmptyBorder(2, 0, 2, 0));
-                
                 // Find server name
                 String serverName = dest.guildId;
                 for (LootTrackerApiClient.ServerInfo server : availableServers)
@@ -692,11 +743,6 @@ public class OSRSLootTrackerPanel extends PluginPanel
                         break;
                     }
                 }
-                
-                JLabel serverLabel = new JLabel("📡 " + serverName);
-                serverLabel.setForeground(Color.WHITE);
-                serverLabel.setFont(FontManager.getRunescapeSmallFont());
-                destRow.add(serverLabel, BorderLayout.WEST);
                 
                 // Show channel count and min value range
                 List<ChannelConfig> channels = dest.getEffectiveChannels();
@@ -714,7 +760,6 @@ public class OSRSLootTrackerPanel extends PluginPanel
                 }
                 else
                 {
-                    // Show range of min values
                     int minVal = channels.stream().mapToInt(c -> c.minValue).min().orElse(0);
                     int maxVal = channels.stream().mapToInt(c -> c.minValue).max().orElse(0);
                     if (minVal == maxVal)
@@ -727,10 +772,35 @@ public class OSRSLootTrackerPanel extends PluginPanel
                     }
                 }
                 
+                // Use GridBagLayout for proper spacing
+                JPanel destRow = new JPanel(new GridBagLayout());
+                destRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+                destRow.setBorder(new EmptyBorder(2, 0, 2, 0));
+                
+                GridBagConstraints c = new GridBagConstraints();
+                
+                // Server name on left
+                c.gridx = 0;
+                c.gridy = 0;
+                c.weightx = 1.0;
+                c.anchor = GridBagConstraints.WEST;
+                c.fill = GridBagConstraints.HORIZONTAL;
+                
+                JLabel serverLabel = new JLabel("📡 " + serverName);
+                serverLabel.setForeground(Color.WHITE);
+                serverLabel.setFont(FontManager.getRunescapeSmallFont());
+                destRow.add(serverLabel, c);
+                
+                // Channel info on right
+                c.gridx = 1;
+                c.weightx = 0;
+                c.anchor = GridBagConstraints.EAST;
+                c.fill = GridBagConstraints.NONE;
+                
                 JLabel channelLabel = new JLabel(infoText);
                 channelLabel.setForeground(channelCount > 0 ? SUCCESS_COLOR : WARNING_COLOR);
                 channelLabel.setFont(FontManager.getRunescapeSmallFont());
-                destRow.add(channelLabel, BorderLayout.EAST);
+                destRow.add(channelLabel, c);
                 
                 destinationsPanel.add(destRow);
             }
@@ -930,7 +1000,13 @@ public class OSRSLootTrackerPanel extends PluginPanel
                                 // Get min value from spinner (already in GP)
                                 int minValueGp = (Integer) comp.minValueSpinner.getValue();
                                 
-                                ChannelConfig cc = new ChannelConfig(comp.channelId, comp.channelName, minValueGp);
+                                // Get drop type filters
+                                boolean sendValuableDrops = comp.valuableDropsCheckbox.isSelected();
+                                boolean sendCollectionLog = comp.collectionLogCheckbox.isSelected();
+                                boolean sendPets = comp.petsCheckbox.isSelected();
+                                
+                                ChannelConfig cc = new ChannelConfig(comp.channelId, comp.channelName, minValueGp,
+                                    sendValuableDrops, sendCollectionLog, sendPets);
                                 dest.channels.add(cc);
                                 dest.channelIds.add(comp.channelId); // Also populate legacy list
                             }
@@ -963,13 +1039,21 @@ public class OSRSLootTrackerPanel extends PluginPanel
     {
         JCheckBox checkbox;
         JSpinner minValueSpinner;
+        JCheckBox valuableDropsCheckbox;
+        JCheckBox collectionLogCheckbox;
+        JCheckBox petsCheckbox;
         String channelId;
         String channelName;
         
-        ChannelUIComponents(JCheckBox checkbox, JSpinner minValueSpinner, String channelId, String channelName)
+        ChannelUIComponents(JCheckBox checkbox, JSpinner minValueSpinner, 
+                           JCheckBox valuableDropsCheckbox, JCheckBox collectionLogCheckbox, JCheckBox petsCheckbox,
+                           String channelId, String channelName)
         {
             this.checkbox = checkbox;
             this.minValueSpinner = minValueSpinner;
+            this.valuableDropsCheckbox = valuableDropsCheckbox;
+            this.collectionLogCheckbox = collectionLogCheckbox;
+            this.petsCheckbox = petsCheckbox;
             this.channelId = channelId;
             this.channelName = channelName;
         }
@@ -1042,7 +1126,15 @@ public class OSRSLootTrackerPanel extends PluginPanel
                         
                         for (LootTrackerApiClient.ChannelInfo channel : entry.getValue())
                         {
-                            // Row panel for checkbox + min value
+                            // Container for this channel (two rows)
+                            JPanel channelContainer = new JPanel();
+                            channelContainer.setLayout(new BoxLayout(channelContainer, BoxLayout.Y_AXIS));
+                            channelContainer.setBackground(ColorScheme.DARK_GRAY_COLOR);
+                            channelContainer.setOpaque(false);
+                            channelContainer.setAlignmentX(Component.LEFT_ALIGNMENT);
+                            channelContainer.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0));
+                            
+                            // Row 1: Channel checkbox + min value
                             JPanel channelRow = new JPanel(new BorderLayout(5, 0));
                             channelRow.setBackground(ColorScheme.DARK_GRAY_COLOR);
                             channelRow.setOpaque(false);
@@ -1081,10 +1173,6 @@ public class OSRSLootTrackerPanel extends PluginPanel
                             minValueSpinner.setFont(FontManager.getRunescapeSmallFont());
                             minValueSpinner.setToolTipText("Minimum drop value in GP (e.g., 100000 for 100k)");
                             
-                            // Only enable spinner when checkbox is selected
-                            minValueSpinner.setEnabled(isSelected);
-                            chBox.addActionListener(e -> minValueSpinner.setEnabled(chBox.isSelected()));
-                            
                             JLabel gpLabel = new JLabel("GP");
                             gpLabel.setForeground(new Color(150, 150, 150));
                             gpLabel.setFont(FontManager.getRunescapeSmallFont());
@@ -1094,10 +1182,69 @@ public class OSRSLootTrackerPanel extends PluginPanel
                             minValuePanel.add(gpLabel);
                             
                             channelRow.add(minValuePanel, BorderLayout.EAST);
+                            channelContainer.add(channelRow);
                             
-                            channelPanel.add(channelRow);
+                            // Row 2: Drop type checkboxes
+                            JPanel dropTypePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+                            dropTypePanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+                            dropTypePanel.setOpaque(false);
+                            dropTypePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                            dropTypePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+                            dropTypePanel.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 0)); // Indent
+                            
+                            // Get existing drop type settings (default to true)
+                            boolean sendDrops = existingCC != null ? existingCC.sendValuableDrops : true;
+                            boolean sendLog = existingCC != null ? existingCC.sendCollectionLog : true;
+                            boolean sendPets = existingCC != null ? existingCC.sendPets : true;
+                            
+                            JCheckBox valuableDropsCheck = new JCheckBox("Drops");
+                            valuableDropsCheck.setForeground(new Color(200, 200, 200));
+                            valuableDropsCheck.setBackground(ColorScheme.DARK_GRAY_COLOR);
+                            valuableDropsCheck.setOpaque(false);
+                            valuableDropsCheck.setFont(FontManager.getRunescapeSmallFont());
+                            valuableDropsCheck.setSelected(sendDrops);
+                            valuableDropsCheck.setToolTipText("Send valuable drops to this channel");
+                            
+                            JCheckBox collectionLogCheck = new JCheckBox("Collection Log");
+                            collectionLogCheck.setForeground(new Color(200, 200, 200));
+                            collectionLogCheck.setBackground(ColorScheme.DARK_GRAY_COLOR);
+                            collectionLogCheck.setOpaque(false);
+                            collectionLogCheck.setFont(FontManager.getRunescapeSmallFont());
+                            collectionLogCheck.setSelected(sendLog);
+                            collectionLogCheck.setToolTipText("Send collection log entries to this channel");
+                            
+                            JCheckBox petsCheck = new JCheckBox("Pets");
+                            petsCheck.setForeground(new Color(200, 200, 200));
+                            petsCheck.setBackground(ColorScheme.DARK_GRAY_COLOR);
+                            petsCheck.setOpaque(false);
+                            petsCheck.setFont(FontManager.getRunescapeSmallFont());
+                            petsCheck.setSelected(sendPets);
+                            petsCheck.setToolTipText("Send pet drops to this channel");
+                            
+                            dropTypePanel.add(valuableDropsCheck);
+                            dropTypePanel.add(collectionLogCheck);
+                            dropTypePanel.add(petsCheck);
+                            channelContainer.add(dropTypePanel);
+                            
+                            // Enable/disable all controls when main checkbox is toggled
+                            minValueSpinner.setEnabled(isSelected);
+                            valuableDropsCheck.setEnabled(isSelected);
+                            collectionLogCheck.setEnabled(isSelected);
+                            petsCheck.setEnabled(isSelected);
+                            
+                            chBox.addActionListener(e -> {
+                                boolean enabled = chBox.isSelected();
+                                minValueSpinner.setEnabled(enabled);
+                                valuableDropsCheck.setEnabled(enabled);
+                                collectionLogCheck.setEnabled(enabled);
+                                petsCheck.setEnabled(enabled);
+                            });
+                            
+                            channelPanel.add(channelContainer);
                             checkboxes.add(chBox);
-                            components.add(new ChannelUIComponents(chBox, minValueSpinner, channel.id, channel.name));
+                            components.add(new ChannelUIComponents(chBox, minValueSpinner, 
+                                valuableDropsCheck, collectionLogCheck, petsCheck, 
+                                channel.id, channel.name));
                         }
                     }
                     
@@ -1281,7 +1428,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
     }
     
     /**
-     * Channel configuration with per-channel minimum value
+     * Channel configuration with per-channel minimum value and drop type filters
      */
     public static class ChannelConfig
     {
@@ -1289,9 +1436,17 @@ public class OSRSLootTrackerPanel extends PluginPanel
         public String channelName; // For display purposes
         public int minValue; // Minimum GP value for this channel (0 = use global default)
         
+        // Drop type filters (default all to true for backward compatibility)
+        public boolean sendValuableDrops = true;  // Regular loot drops
+        public boolean sendCollectionLog = true;  // Collection log entries
+        public boolean sendPets = true;           // Pet drops
+        
         public ChannelConfig()
         {
             this.minValue = 0;
+            this.sendValuableDrops = true;
+            this.sendCollectionLog = true;
+            this.sendPets = true;
         }
         
         public ChannelConfig(String channelId, String channelName, int minValue)
@@ -1299,6 +1454,20 @@ public class OSRSLootTrackerPanel extends PluginPanel
             this.channelId = channelId;
             this.channelName = channelName;
             this.minValue = minValue;
+            this.sendValuableDrops = true;
+            this.sendCollectionLog = true;
+            this.sendPets = true;
+        }
+        
+        public ChannelConfig(String channelId, String channelName, int minValue, 
+                            boolean sendValuableDrops, boolean sendCollectionLog, boolean sendPets)
+        {
+            this.channelId = channelId;
+            this.channelName = channelName;
+            this.minValue = minValue;
+            this.sendValuableDrops = sendValuableDrops;
+            this.sendCollectionLog = sendCollectionLog;
+            this.sendPets = sendPets;
         }
     }
     

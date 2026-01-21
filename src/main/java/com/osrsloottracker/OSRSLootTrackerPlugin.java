@@ -79,6 +79,18 @@ public class OSRSLootTrackerPlugin extends Plugin
     // Deduplication cache for collection log entries (item name -> timestamp)
     private final Map<String, Long> recentCollectionLogItems = new ConcurrentHashMap<>();
     private static final long COLLECTION_LOG_DEDUP_WINDOW_MS = 5000; // 5 seconds
+    
+    // Cache for recent collection log pet names (for cross-referencing with pet messages)
+    // When we get a pet message, check if there was a recent collection log entry that might be the pet name
+    private volatile String recentCollectionLogPetCandidate = null;
+    private volatile long recentCollectionLogPetCandidateTime = 0;
+    private static final long PET_COLLECTION_LOG_WINDOW_MS = 3000; // 3 second window
+    
+    /**
+     * Debug mode flag - set to false for Plugin Hub releases!
+     * When true, shows test buttons in the panel for testing pet/collection log detection.
+     */
+    public static final boolean DEBUG_MODE = false;
 
     @Override
     protected void startUp() throws Exception
@@ -91,6 +103,7 @@ public class OSRSLootTrackerPlugin extends Plugin
 
         // Initialize the injected panel
         panel.init();
+        panel.setPlugin(this); // For debug/test methods
         
         // Set up RSN supplier - gets the current player name on demand
         panel.setRsnSupplier(() -> {
@@ -417,6 +430,11 @@ public class OSRSLootTrackerPlugin extends Plugin
                 // Clean up old entries (older than 30 seconds)
                 recentCollectionLogItems.entrySet().removeIf(e -> (now - e.getValue()) > 30000);
                 
+                // Cache this as a potential pet name (for cross-referencing with pet messages)
+                // This helps when we get a pet but it doesn't become our follower (dupe/inventory full)
+                recentCollectionLogPetCandidate = itemName;
+                recentCollectionLogPetCandidateTime = now;
+                
                 final String rsn = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "Unknown";
                 final String finalItemName = itemName;
                 
@@ -447,29 +465,92 @@ public class OSRSLootTrackerPlugin extends Plugin
             }
 
             final String rsn = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "Unknown";
+            final String petMessage = message;
             
-            LootDropData drop = new LootDropData(
-                rsn,
-                "Pet Drop",
-                1,
-                0,
-                "Pet",
-                "PET"
-            );
-
-            executor.execute(() -> {
-                try
-                {
-                    apiClient.submitPetDrop(drop, message);
-                    log.info("Submitted pet drop!");
-                    SwingUtilities.invokeLater(() -> panel.addRecentDrop(drop));
-                }
-                catch (Exception e)
-                {
-                    log.error("Failed to submit pet drop", e);
-                }
-            });
+            // Check if this is a "would have been followed" message (pet didn't become follower)
+            final boolean isDuplicatePet = message.contains("would have been followed");
+            
+            // Try to get the pet name from the player's follower
+            // Schedule a slight delay to allow the pet to spawn
+            executor.schedule(() -> {
+                clientThread.invoke(() -> {
+                    String petName = null;
+                    
+                    // Method 1: Try to get the pet name from the player's follower
+                    if (!isDuplicatePet && client.getFollower() != null)
+                    {
+                        petName = client.getFollower().getName();
+                        log.info("Pet drop detected! Pet name from follower: {}", petName);
+                    }
+                    
+                    // Method 2: If no follower (dupe/inventory full), check recent collection log entries
+                    // Pets often trigger a collection log entry at the same time
+                    if (petName == null)
+                    {
+                        long now = System.currentTimeMillis();
+                        if (recentCollectionLogPetCandidate != null && 
+                            (now - recentCollectionLogPetCandidateTime) < PET_COLLECTION_LOG_WINDOW_MS)
+                        {
+                            petName = recentCollectionLogPetCandidate;
+                            log.info("Pet drop detected! Pet name from collection log: {}", petName);
+                            // Clear the candidate so we don't reuse it
+                            recentCollectionLogPetCandidate = null;
+                        }
+                        else
+                        {
+                            log.info("Pet drop detected! Could not determine pet name (no follower, no recent collection log)");
+                        }
+                    }
+                    
+                    final String finalPetName = petName;
+                    
+                    // Capture screenshot if enabled, then submit
+                    if (config.captureScreenshots())
+                    {
+                        captureScreenshot(screenshotData -> {
+                            String url = screenshotData != null ? screenshotData.url : null;
+                            String base64 = screenshotData != null ? screenshotData.base64 : null;
+                            submitPetDrop(rsn, petMessage, finalPetName, url, base64);
+                        });
+                    }
+                    else
+                    {
+                        executor.execute(() -> submitPetDrop(rsn, petMessage, finalPetName, null, null));
+                    }
+                });
+            }, 600, TimeUnit.MILLISECONDS); // Small delay for pet to spawn
         }
+    }
+    
+    /**
+     * Submit a pet drop with optional screenshot and pet name
+     */
+    private void submitPetDrop(String rsn, String message, String petName, String screenshotUrl, String screenshotBase64)
+    {
+        String displayName = petName != null ? petName : "Pet Drop";
+        
+        LootDropData drop = new LootDropData(
+            rsn,
+            displayName,
+            1,
+            0,
+            "Pet",
+            "PET",
+            screenshotUrl
+        );
+
+        executor.execute(() -> {
+            try
+            {
+                apiClient.submitPetDrop(drop, message, petName, screenshotUrl, screenshotBase64);
+                log.info("Submitted pet drop: {} with screenshot: {}", displayName, (screenshotUrl != null || screenshotBase64 != null));
+                SwingUtilities.invokeLater(() -> panel.addRecentDrop(drop));
+            }
+            catch (Exception e)
+            {
+                log.error("Failed to submit pet drop", e);
+            }
+        });
     }
 
     private String extractCollectionLogItem(String message)
@@ -584,6 +665,93 @@ public class OSRSLootTrackerPlugin extends Plugin
     OSRSLootTrackerConfig provideConfig(ConfigManager configManager)
     {
         return configManager.getConfig(OSRSLootTrackerConfig.class);
+    }
+    
+    // ============== DEBUG/TEST METHODS (remove before release) ==============
+    
+    /**
+     * Simulate a pet drop for testing purposes.
+     * This bypasses the chat message detection and directly triggers the pet submission flow.
+     */
+    public void simulatePetDrop()
+    {
+        if (!authManager.isAuthenticated())
+        {
+            log.warn("[TEST] Cannot simulate pet drop - not authenticated");
+            return;
+        }
+        
+        log.info("[TEST] Simulating pet drop...");
+        
+        // Must access client on the client thread
+        clientThread.invoke(() -> {
+            final String rsn = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "TestPlayer";
+            final String testMessage = "You have a funny feeling like you're being followed. (TEST)";
+            
+            // Try to get pet name from follower (if player has one)
+            String petName = null;
+            if (client.getFollower() != null)
+            {
+                petName = client.getFollower().getName();
+            }
+            if (petName == null)
+            {
+                petName = "Test Pet"; // Fallback for testing
+            }
+            
+            final String finalPetName = petName;
+            log.info("[TEST] Simulating pet drop for: {} with pet: {}", rsn, finalPetName);
+            
+            // Capture screenshot if enabled, then submit (just like real pet drop)
+            if (config.captureScreenshots())
+            {
+                captureScreenshot(screenshotData -> {
+                    String url = screenshotData != null ? screenshotData.url : null;
+                    String base64 = screenshotData != null ? screenshotData.base64 : null;
+                    submitPetDrop(rsn, testMessage, finalPetName, url, base64);
+                });
+            }
+            else
+            {
+                executor.execute(() -> submitPetDrop(rsn, testMessage, finalPetName, null, null));
+            }
+        });
+    }
+    
+    /**
+     * Simulate a collection log entry for testing purposes.
+     */
+    public void simulateCollectionLog()
+    {
+        if (!authManager.isAuthenticated())
+        {
+            log.warn("[TEST] Cannot simulate collection log - not authenticated");
+            return;
+        }
+        
+        log.info("[TEST] Simulating collection log entry...");
+        
+        // Must access client on the client thread
+        clientThread.invoke(() -> {
+            final String rsn = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "TestPlayer";
+            final String testItem = "Dragon chainbody (TEST)";
+            
+            log.info("[TEST] Simulating collection log entry for: {} - {}", rsn, testItem);
+            
+            // Capture screenshot if enabled, then submit
+            if (config.captureScreenshots())
+            {
+                captureScreenshot(screenshotData -> {
+                    String url = screenshotData != null ? screenshotData.url : null;
+                    String base64 = screenshotData != null ? screenshotData.base64 : null;
+                    submitCollectionLogEntry(rsn, testItem, url, base64);
+                });
+            }
+            else
+            {
+                executor.execute(() -> submitCollectionLogEntry(rsn, testItem, null, null));
+            }
+        });
     }
 }
 
