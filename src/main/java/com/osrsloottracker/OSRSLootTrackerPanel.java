@@ -319,37 +319,6 @@ public class OSRSLootTrackerPanel extends PluginPanel
         dashboardBtn.addActionListener(e -> LinkBrowser.browse("https://osrsloottracker.com/dashboard"));
         panel.add(dashboardBtn);
         
-        // DEBUG: Test buttons (only shown when DEBUG_MODE is true)
-        if (OSRSLootTrackerPlugin.DEBUG_MODE)
-        {
-            panel.add(Box.createVerticalStrut(10));
-            JLabel debugLabel = new JLabel("--- DEBUG ---");
-            debugLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-            debugLabel.setForeground(Color.ORANGE);
-            debugLabel.setFont(FontManager.getRunescapeSmallFont());
-            panel.add(debugLabel);
-            
-            JButton testPetBtn = new JButton("Test Pet Drop");
-            testPetBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
-            testPetBtn.setBackground(new Color(255, 215, 0)); // Gold
-            testPetBtn.addActionListener(e -> {
-                if (plugin != null) {
-                    plugin.simulatePetDrop();
-                }
-            });
-            panel.add(testPetBtn);
-            
-            JButton testCollectionBtn = new JButton("Test Collection Log");
-            testCollectionBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
-            testCollectionBtn.setBackground(new Color(138, 43, 226)); // Purple
-            testCollectionBtn.addActionListener(e -> {
-                if (plugin != null) {
-                    plugin.simulateCollectionLog();
-                }
-            });
-            panel.add(testCollectionBtn);
-        }
-        
         return panel;
     }
     

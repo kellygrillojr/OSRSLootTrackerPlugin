@@ -86,12 +86,6 @@ public class OSRSLootTrackerPlugin extends Plugin
     private volatile long recentCollectionLogPetCandidateTime = 0;
     private static final long PET_COLLECTION_LOG_WINDOW_MS = 3000; // 3 second window
     
-    /**
-     * Debug mode flag - set to false for Plugin Hub releases!
-     * When true, shows test buttons in the panel for testing pet/collection log detection.
-     */
-    public static final boolean DEBUG_MODE = false;
-
     @Override
     protected void startUp() throws Exception
     {
@@ -667,92 +661,6 @@ public class OSRSLootTrackerPlugin extends Plugin
         return configManager.getConfig(OSRSLootTrackerConfig.class);
     }
     
-    // ============== DEBUG/TEST METHODS (remove before release) ==============
-    
-    /**
-     * Simulate a pet drop for testing purposes.
-     * This bypasses the chat message detection and directly triggers the pet submission flow.
-     */
-    public void simulatePetDrop()
-    {
-        if (!authManager.isAuthenticated())
-        {
-            log.warn("[TEST] Cannot simulate pet drop - not authenticated");
-            return;
-        }
-        
-        log.info("[TEST] Simulating pet drop...");
-        
-        // Must access client on the client thread
-        clientThread.invoke(() -> {
-            final String rsn = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "TestPlayer";
-            final String testMessage = "You have a funny feeling like you're being followed. (TEST)";
-            
-            // Try to get pet name from follower (if player has one)
-            String petName = null;
-            if (client.getFollower() != null)
-            {
-                petName = client.getFollower().getName();
-            }
-            if (petName == null)
-            {
-                petName = "Test Pet"; // Fallback for testing
-            }
-            
-            final String finalPetName = petName;
-            log.info("[TEST] Simulating pet drop for: {} with pet: {}", rsn, finalPetName);
-            
-            // Capture screenshot if enabled, then submit (just like real pet drop)
-            if (config.captureScreenshots())
-            {
-                captureScreenshot(screenshotData -> {
-                    String url = screenshotData != null ? screenshotData.url : null;
-                    String base64 = screenshotData != null ? screenshotData.base64 : null;
-                    submitPetDrop(rsn, testMessage, finalPetName, url, base64);
-                });
-            }
-            else
-            {
-                executor.execute(() -> submitPetDrop(rsn, testMessage, finalPetName, null, null));
-            }
-        });
-    }
-    
-    /**
-     * Simulate a collection log entry for testing purposes.
-     */
-    public void simulateCollectionLog()
-    {
-        if (!authManager.isAuthenticated())
-        {
-            log.warn("[TEST] Cannot simulate collection log - not authenticated");
-            return;
-        }
-        
-        log.info("[TEST] Simulating collection log entry...");
-        
-        // Must access client on the client thread
-        clientThread.invoke(() -> {
-            final String rsn = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "TestPlayer";
-            final String testItem = "Dragon chainbody (TEST)";
-            
-            log.info("[TEST] Simulating collection log entry for: {} - {}", rsn, testItem);
-            
-            // Capture screenshot if enabled, then submit
-            if (config.captureScreenshots())
-            {
-                captureScreenshot(screenshotData -> {
-                    String url = screenshotData != null ? screenshotData.url : null;
-                    String base64 = screenshotData != null ? screenshotData.base64 : null;
-                    submitCollectionLogEntry(rsn, testItem, url, base64);
-                });
-            }
-            else
-            {
-                executor.execute(() -> submitCollectionLogEntry(rsn, testItem, null, null));
-            }
-        });
-    }
 }
 
 
