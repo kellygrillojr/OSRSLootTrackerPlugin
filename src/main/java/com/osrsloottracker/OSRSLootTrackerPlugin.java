@@ -146,17 +146,17 @@ public class OSRSLootTrackerPlugin extends Plugin
     @Subscribe
     public void onLootReceived(LootReceived event)
     {
-        log.info("LootReceived event: {} items from {}", event.getItems().size(), event.getName());
+        log.debug("LootReceived event: {} items from {}", event.getItems().size(), event.getName());
         
         if (!authManager.isAuthenticated())
         {
-            log.info("Not authenticated, skipping loot submission");
+            log.debug("Not authenticated, skipping loot submission");
             return;
         }
 
         if (!config.trackLoot())
         {
-            log.info("Loot tracking disabled, skipping");
+            log.debug("Loot tracking disabled, skipping");
             return;
         }
         
@@ -167,7 +167,7 @@ public class OSRSLootTrackerPlugin extends Plugin
         
         if (!hasDestinations && !hasLegacyServer)
         {
-            log.info("No destinations configured, skipping loot submission");
+            log.debug("No destinations configured, skipping loot submission");
             return;
         }
 
@@ -217,7 +217,7 @@ public class OSRSLootTrackerPlugin extends Plugin
             totalDropValue += item.value;
         }
         
-        log.info("Processing loot for RSN: {}, from: {}, items: {}/{} passed filter, total value: {}gp (threshold: {}gp)", 
+        log.debug("Processing loot for RSN: {}, from: {}, items: {}/{} passed filter, total value: {}gp (threshold: {}gp)", 
             rsn, sourceName, processedItems.size(), allItems.size(), totalDropValue, lowestThreshold);
 
         // Skip if no items passed the filter
@@ -289,14 +289,14 @@ public class OSRSLootTrackerPlugin extends Plugin
             return;
         }
         
-        log.info("Capturing screenshot for guild {}", guildId);
+        log.debug("Capturing screenshot for guild {}", guildId);
         
         drawManager.requestNextFrameListener(image -> {
             executor.execute(() -> {
                 try
                 {
                     BufferedImage screenshot = (BufferedImage) image;
-                    log.info("Screenshot captured, uploading...");
+                    log.debug("Screenshot captured, uploading...");
                     
                     // Convert to PNG bytes
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -305,7 +305,7 @@ public class OSRSLootTrackerPlugin extends Plugin
                     
                     // Validate screenshot with backend - saving happens per-destination
                     LootTrackerApiClient.ScreenshotResult result = apiClient.uploadScreenshot(imageBytes, guildId);
-                    log.info("Screenshot validated - will be processed per-destination");
+                    log.debug("Screenshot validated - will be processed per-destination");
                     
                     callback.accept(new ScreenshotData(result.url, result.base64));
                 }
@@ -332,7 +332,7 @@ public class OSRSLootTrackerPlugin extends Plugin
     private void submitProcessedItems(List<ProcessedItem> items, String rsn, String sourceName, 
                                        LootRecordType type, String screenshotUrl, String screenshotBase64)
     {
-        log.info("submitProcessedItems called with {} items, rsn={}, source={}, screenshot={}", 
+        log.debug("submitProcessedItems called with {} items, rsn={}, source={}, screenshot={}", 
             items.size(), rsn, sourceName, (screenshotUrl != null || screenshotBase64 != null) ? "yes" : "no");
         
         // Calculate total value (per-channel filtering happens in API client)
@@ -345,7 +345,7 @@ public class OSRSLootTrackerPlugin extends Plugin
         
         if (items.isEmpty())
         {
-            log.info("No items to submit");
+            log.debug("No items to submit");
             return;
         }
         
@@ -357,13 +357,13 @@ public class OSRSLootTrackerPlugin extends Plugin
         executor.execute(() -> {
             try
             {
-                log.info("Submitting {} items from {} (total: {}gp) with screenshot: {}", 
+                log.debug("Submitting {} items from {} (total: {}gp) with screenshot: {}", 
                     itemsCopy.size(), sourceName, finalTotalValue, 
                     (finalScreenshotUrl != null || finalScreenshotBase64 != null));
                 
                 apiClient.submitDropBatch(itemsCopy, rsn, sourceName, type.name(), 
                     finalScreenshotUrl, finalScreenshotBase64);
-                log.info("Successfully submitted {} items", itemsCopy.size());
+                log.debug("Successfully submitted {} items", itemsCopy.size());
                 
                 // Update panel with each drop
                 for (ProcessedItem item : itemsCopy)
@@ -432,7 +432,7 @@ public class OSRSLootTrackerPlugin extends Plugin
                 final String rsn = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "Unknown";
                 final String finalItemName = itemName;
                 
-                log.info("Processing collection log entry: {}", itemName);
+                log.debug("Processing collection log entry: {}", itemName);
                 
                 // Capture screenshot if enabled, then submit
                 if (config.captureScreenshots())
@@ -474,7 +474,7 @@ public class OSRSLootTrackerPlugin extends Plugin
                     if (!isDuplicatePet && client.getFollower() != null)
                     {
                         petName = client.getFollower().getName();
-                        log.info("Pet drop detected! Pet name from follower: {}", petName);
+                        log.debug("Pet drop detected! Pet name from follower: {}", petName);
                     }
                     
                     // Method 2: If no follower (dupe/inventory full), check recent collection log entries
@@ -486,13 +486,13 @@ public class OSRSLootTrackerPlugin extends Plugin
                             (now - recentCollectionLogPetCandidateTime) < PET_COLLECTION_LOG_WINDOW_MS)
                         {
                             petName = recentCollectionLogPetCandidate;
-                            log.info("Pet drop detected! Pet name from collection log: {}", petName);
+                            log.debug("Pet drop detected! Pet name from collection log: {}", petName);
                             // Clear the candidate so we don't reuse it
                             recentCollectionLogPetCandidate = null;
                         }
                         else
                         {
-                            log.info("Pet drop detected! Could not determine pet name (no follower, no recent collection log)");
+                            log.debug("Pet drop detected! Could not determine pet name (no follower, no recent collection log)");
                         }
                     }
                     
@@ -537,7 +537,7 @@ public class OSRSLootTrackerPlugin extends Plugin
             try
             {
                 apiClient.submitPetDrop(drop, message, petName, screenshotUrl, screenshotBase64);
-                log.info("Submitted pet drop: {} with screenshot: {}", displayName, (screenshotUrl != null || screenshotBase64 != null));
+                log.debug("Submitted pet drop: {} with screenshot: {}", displayName, (screenshotUrl != null || screenshotBase64 != null));
                 SwingUtilities.invokeLater(() -> panel.addRecentDrop(drop));
             }
             catch (Exception e)
@@ -597,7 +597,7 @@ public class OSRSLootTrackerPlugin extends Plugin
             try
             {
                 apiClient.submitCollectionLogEntry(drop, screenshotUrl, screenshotBase64);
-                log.info("Submitted collection log entry: {} with screenshot: {}", 
+                log.debug("Submitted collection log entry: {} with screenshot: {}", 
                     itemName, (screenshotUrl != null || screenshotBase64 != null));
                 SwingUtilities.invokeLater(() -> panel.addRecentDrop(drop));
             }
@@ -628,7 +628,7 @@ public class OSRSLootTrackerPlugin extends Plugin
     {
         if (event.getGameState() == GameState.LOGGED_IN)
         {
-            log.info("LOGGED_IN detected, scheduling RSN check...");
+            log.debug("LOGGED_IN detected, scheduling RSN check...");
             
             // Schedule a delayed check - RSN takes ~1-2 seconds to be available after login
             executor.schedule(() -> {
@@ -639,7 +639,7 @@ public class OSRSLootTrackerPlugin extends Plugin
                     {
                         rsn = client.getLocalPlayer().getName();
                     }
-                    log.info("Player RSN after delay: {}", rsn);
+                    log.debug("Player RSN after delay: {}", rsn);
                     
                     if (rsn != null && !rsn.isEmpty())
                     {

@@ -129,12 +129,12 @@ public class LootTrackerApiClient
             
             if (formattedDestinations.size() == 0)
             {
-                log.info("No destinations meet value threshold for this drop ({}gp)", dropValue);
+                log.debug("No destinations meet value threshold for this drop ({}gp)", dropValue);
                 return; // Don't submit if no destinations qualify
             }
             
             body.add("destinations", formattedDestinations);
-            log.info("Submitting drop to {} destinations", formattedDestinations.size());
+            log.debug("Submitting drop to {} destinations", formattedDestinations.size());
         }
         else
         {
@@ -270,7 +270,7 @@ public class LootTrackerApiClient
                     }
                     else
                     {
-                        log.info("Skipping guild {} - no channels meet value/type filter", rawDest.get("guildId").getAsString());
+                        log.debug("Skipping guild {} - no channels meet value/type filter", rawDest.get("guildId").getAsString());
                         continue; // Skip this destination entirely
                     }
                 }
@@ -290,12 +290,12 @@ public class LootTrackerApiClient
             
             if (formattedDestinations.size() == 0)
             {
-                log.info("No destinations meet value threshold for this drop ({}gp)", totalValue);
+                log.debug("No destinations meet value threshold for this drop ({}gp)", totalValue);
                 return; // Don't submit if no destinations qualify
             }
             
             body.add("destinations", formattedDestinations);
-            log.info("Submitting batch drop ({} items, {}gp) to {} destinations", 
+            log.debug("Submitting batch drop ({} items, {}gp) to {} destinations", 
                 items.size(), totalValue, formattedDestinations.size());
         }
         else
@@ -360,7 +360,7 @@ public class LootTrackerApiClient
         // Screenshot is now validated but NOT saved at upload time
         // Saving happens per-destination in drop submission (only for premium guilds)
         // We always return base64 so drop submission can handle it per-destination
-        log.info("Screenshot validated - will be saved per-destination for premium guilds");
+        log.debug("Screenshot validated - will be saved per-destination for premium guilds");
         return new ScreenshotResult(null, base64Image, false);
     }
     
@@ -596,7 +596,7 @@ public class LootTrackerApiClient
                     }
                     else
                     {
-                        log.info("Skipping guild {} for collection log - no channels accept collection log", 
+                        log.debug("Skipping guild {} for collection log - no channels accept collection log", 
                             rawDest.get("guildId").getAsString());
                         continue;
                     }
@@ -608,7 +608,7 @@ public class LootTrackerApiClient
                 }
                 else
                 {
-                    log.info("Skipping guild {} for collection log - no channels configured", 
+                    log.debug("Skipping guild {} for collection log - no channels configured", 
                         rawDest.get("guildId").getAsString());
                     continue;
                 }
@@ -623,7 +623,7 @@ public class LootTrackerApiClient
             
             if (formattedDestinations.size() == 0)
             {
-                log.info("No destinations accept collection log entries, skipping submission");
+                log.debug("No destinations accept collection log entries, skipping submission");
                 return;
             }
             
@@ -752,7 +752,7 @@ public class LootTrackerApiClient
                     }
                     else
                     {
-                        log.info("Skipping guild {} for pet drop - no channels accept pets", 
+                        log.debug("Skipping guild {} for pet drop - no channels accept pets", 
                             rawDest.get("guildId").getAsString());
                         continue;
                     }
@@ -764,7 +764,7 @@ public class LootTrackerApiClient
                 }
                 else
                 {
-                    log.info("Skipping guild {} for pet drop - no channels configured", 
+                    log.debug("Skipping guild {} for pet drop - no channels configured", 
                         rawDest.get("guildId").getAsString());
                     continue;
                 }
@@ -779,7 +779,7 @@ public class LootTrackerApiClient
             
             if (formattedDestinations.size() == 0)
             {
-                log.info("No destinations accept pet drops, skipping submission");
+                log.debug("No destinations accept pet drops, skipping submission");
                 return;
             }
             
@@ -810,11 +810,11 @@ public class LootTrackerApiClient
         return CompletableFuture.supplyAsync(() -> {
             try
             {
-                log.info("Fetching servers from API...");
+                log.debug("Fetching servers from API...");
                 String response = get("/plugin/servers");
-                log.info("Server response: {}", response);
+                log.debug("Server response: {}", response);
                 List<ServerInfo> servers = gson.fromJson(response, new TypeToken<List<ServerInfo>>(){}.getType());
-                log.info("Parsed {} servers", servers != null ? servers.size() : 0);
+                log.debug("Parsed {} servers", servers != null ? servers.size() : 0);
                 return servers;
             }
             catch (Exception e)
@@ -833,10 +833,10 @@ public class LootTrackerApiClient
         return CompletableFuture.supplyAsync(() -> {
             try
             {
-                log.info("Fetching channels for server {}...", serverId);
+                log.debug("Fetching channels for server {}...", serverId);
                 String response = get("/plugin/servers/" + serverId + "/channels");
                 List<ChannelInfo> channels = gson.fromJson(response, new TypeToken<List<ChannelInfo>>(){}.getType());
-                log.info("Found {} channels", channels != null ? channels.size() : 0);
+                log.debug("Found {} channels", channels != null ? channels.size() : 0);
                 return channels;
             }
             catch (Exception e)
@@ -936,11 +936,11 @@ public class LootTrackerApiClient
                 {
                     endpoint += "?rsn=" + java.net.URLEncoder.encode(rsn, java.nio.charset.StandardCharsets.UTF_8);
                 }
-                log.info("Fetching user stats for RSN: {}", rsn);
+                log.debug("Fetching user stats for RSN: {}", rsn);
                 String response = get(endpoint);
-                log.info("Stats response: {}", response.length() > 200 ? response.substring(0, 200) + "..." : response);
+                log.debug("Stats response: {}", response.length() > 200 ? response.substring(0, 200) + "..." : response);
                 UserStats stats = gson.fromJson(response, UserStats.class);
-                log.info("Parsed stats: {} total drops, {} total value", 
+                log.debug("Parsed stats: {} total drops, {} total value", 
                     stats != null ? stats.total_drops : "null", 
                     stats != null ? stats.total_value : "null");
                 return stats;

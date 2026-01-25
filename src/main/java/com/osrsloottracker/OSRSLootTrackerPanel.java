@@ -424,12 +424,12 @@ public class OSRSLootTrackerPanel extends PluginPanel
     private void loadUserStats()
     {
         String rsn = getCurrentRsn();
-        log.info("Loading user stats for RSN: {}", rsn);
+        log.debug("Loading user stats for RSN: {}", rsn);
         apiClient.getUserStats(rsn).thenAccept(stats -> {
             SwingUtilities.invokeLater(() -> {
                 if (stats != null)
                 {
-                    log.info("Received stats: {} drops, {} GP value", stats.total_drops, stats.total_value);
+                    log.debug("Received stats: {} drops, {} GP value", stats.total_drops, stats.total_value);
                     
                     // Format total drops
                     totalDropsLabel.setText(formatNumber(stats.total_drops));
@@ -670,7 +670,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
         apiClient.getServers().thenAccept(servers -> {
             SwingUtilities.invokeLater(() -> {
                 availableServers = servers;
-                log.info("Loaded {} servers", servers.size());
+                log.debug("Loaded {} servers", servers.size());
                 // Refresh destinations display now that we have server names
                 updateDestinationsDisplay();
             });
@@ -1219,7 +1219,7 @@ public class OSRSLootTrackerPanel extends PluginPanel
                     
                     channelCheckboxes.put(serverId, checkboxes);
                     channelComponents.put(serverId, components);
-                    log.info("Loaded {} channels for server {}", checkboxes.size(), serverId);
+                    log.debug("Loaded {} channels for server {}", checkboxes.size(), serverId);
                 }
                 
                 channelPanel.revalidate();

@@ -99,7 +99,7 @@ public class AuthenticationManager
         }
         else
         {
-            log.info("No stored authentication found");
+            log.debug("No stored authentication found");
         }
     }
     
@@ -126,12 +126,12 @@ public class AuthenticationManager
                 "&scope=" + URLEncoder.encode(OAUTH_SCOPES, StandardCharsets.UTF_8) +
                 "&state=" + sessionId;
             
-            log.info("Starting OAuth flow with session: {}", sessionId);
-            log.info("Redirect URI: {}", redirectUri);
+            log.debug("Starting OAuth flow with session: {}", sessionId);
+            log.debug("Redirect URI: {}", redirectUri);
             
             // Open browser using RuneLite's LinkBrowser
             LinkBrowser.browse(authUrl);
-            log.info("Opened browser for Discord authentication");
+            log.debug("Opened browser for Discord authentication");
             
             // Start polling for auth result
             startPolling(sessionId);
@@ -149,7 +149,7 @@ public class AuthenticationManager
     private String getCallbackUrl()
     {
         String apiEndpoint = getApiEndpoint();
-        log.info("Using API endpoint for callback: {}", apiEndpoint);
+        log.debug("Using API endpoint for callback: {}", apiEndpoint);
         return apiEndpoint + "/auth/plugin-callback";
     }
     
