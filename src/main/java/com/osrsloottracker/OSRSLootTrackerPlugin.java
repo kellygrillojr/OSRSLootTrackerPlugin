@@ -186,7 +186,7 @@ public class OSRSLootTrackerPlugin extends Plugin
         {
             final int itemId = item.getId();
             final int quantity = item.getQuantity();
-            final int value = itemManager.getItemPrice(itemId) * quantity;
+            final int value = (int) Math.min(Integer.MAX_VALUE, (long) itemManager.getItemPrice(itemId) * quantity);
             final String itemName = itemManager.getItemComposition(itemId).getName();
             
             allItems.add(new ProcessedItem(itemName, quantity, value));
